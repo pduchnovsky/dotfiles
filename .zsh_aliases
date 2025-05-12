@@ -1,0 +1,275 @@
+alias src='source ~/.zshrc'
+alias dot="open https://github.com/pduchnovsky/dotfiles"
+alias cfg="git --git-dir=$HOME/.dotfiles --work-tree=$HOME"
+alias cd="z"
+alias lzg='lazygit'
+
+if [ "$(uname)" = "Darwin" ]; then
+    alias sed='gsed'
+
+    # Secrets read
+    export LAN_ADDR=$(security find-generic-password -a $USER -s LAN_ADDR -w)
+    export PATH_ADDR=$(security find-generic-password -a $USER -s PATH_ADDR -w)
+    export PROXY_ADDR=$(security find-generic-password -a $USER -s PROXY_ADDR -w)
+    export SN_PASS=$(security find-generic-password -a $USER -s SN_PASS -w)
+    export JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)
+    export JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)
+    export CORP_DOMAIN=$(security find-generic-password -a $USER -s CORP_DOMAIN -w)
+    export BITBUCKET_TOKEN=$(security find-generic-password -a $USER -s BITBUCKET_TOKEN -w)
+    export BITBUCKET_USER=$(security find-generic-password -a $USER -s BITBUCKET_USER -w)
+    export BITBUCKET_ADDRESS=$(security find-generic-password -a $USER -s BITBUCKET_ADDRESS -w)
+
+    # SSH via PATH
+    sshviapath() { ssh sse2a@$1@ssh.$PATH_ADDR; }
+    alias tffat1='sshviapath ad_alice@terraboxatf1.'$LAN_ADDR''
+    alias tffat2='sshviapath ad_alice@terraboxatf2.'$LAN_ADDR''
+    alias tfprod1='sshviapath ad_alice@terraboxatp1.'$LAN_ADDR''
+    alias tfprod2='sshviapath ad_alice@terraboxatp2.'$LAN_ADDR''
+fi
+
+tf() { terraform $@; }
+bu() {
+    if ping -c1 -W1 $PROXY_ADDR &>/dev/null; then
+        ALL_PROXY=socks5://$PROXY_ADDR:5678 brew upgrade --greedy
+    else
+        brew upgrade --greedy
+    fi
+}
+bb() { brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
+br() { brew uninstall --zap --cask -f $@; }
+ggo() {
+    open $(git remote get-url origin | awk -F'[:@/]' '{sub(/\.git$/, "", $8); print "https://"$5"/projects/"$7"/repos/"$8}')
+}
+cr() {
+    CLONED_REPOS=$(find ~/repos/ -maxdepth 2 -type d | nl -v8 -s:)
+    for project in HORIZON TFE-GCP-MODULES CS-ATRON; do
+        for repo in $(curl -k -s -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" -X GET "https://${BITBUCKET_ADDRESS}/rest/api/1.0/projects/${project}/repos?limit=1000" | jq -r '.values|.[]|.name' | sed 's|^|'"$project/"'|'); do
+            if [[ "$(grep -E "${repo}" <<<$CLONED_REPOS)" == "" ]]; then
+                git clone ssh://git@${BITBUCKET_ADDRESS}:7999/${repo}.git ~/repos/${repo}
+            fi
+        done
+    done
+}
+fr() {
+    CLONED_REPOS=$(find ~/repos/.solution_projects -maxdepth 1 -type d | nl -v8 -s:)
+    SOL_FACTORY_PROJECT="terraform-gcp-factory-solution-project"
+    if [[ ! -d "${HOME}/repos/HORIZON/${SOL_FACTORY_PROJECT}" ]]; then
+        git clone ssh://git@${BITBUCKET_ADDRESS}:7999/HORIZON/${SOL_FACTORY_PROJECT}.git ~/repos/HORIZON/${SOL_FACTORY_PROJECT}
+    fi
+    PROJECTS=$(find /Users/${USER}/repos/HORIZON/${SOL_FACTORY_PROJECT}/organization/*/*/* -type f -name "*.yaml" |
+        xargs -I % sh -c 'file="%" ;yq -o json "$file" | jq -r .vcs_project ' |
+        tr '[:lower:]' '[:upper:]' | sort | uniq | grep -v NULL)
+    PROJECTS_ARRAY=()
+    while IFS= read -r line; do
+        PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$line/repos?limit=1000")
+    done <<<"$PROJECTS"
+    TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
+        xargs -P 10 -n 1 curl -k -s -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" |
+        jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
+    if [[ ! -d "~/repos/.solution_projects/${TARGET}" ]]; then
+        git clone ssh://git@${BITBUCKET_ADDRESS}:7999/${TARGET}.git ~/repos/.solution_projects/${TARGET}
+    fi
+    cd ~/repos/.solution_projects/${TARGET}
+}
+adm() {
+    case "$1" in
+    "add")
+        sudo /usr/sbin/dseditgroup -o edit -a $USER -t user admin
+        ;;
+    "rm")
+        sudo /usr/sbin/dseditgroup -o edit -d $USER -t user admin
+        ;;
+    esac
+}
+cg() {
+    for repo in $(find ~/repos -name '.git' -type d); do
+        echo $repo
+        git --git-dir="$repo" --work-tree="$repo/.." fetch -p >/dev/null && git --git-dir="$repo" --work-tree="$repo/.." gc >/dev/null 2>&1
+        for branch in $(git --git-dir="$repo" --work-tree="$repo/.." for-each-ref --format '%(refname) %(upstream:track)' refs/heads | awk '$2 == "[gone]" {sub("refs/heads/", "", $1); print $1}'); do
+            git --git-dir="$repo" --work-tree="$repo/.." branch -D $branch
+        done
+    done
+}
+sync() {
+    case "$1" in
+    "")
+        git fetch --prune -a
+        (git pull --recurse-submodules 2>/dev/null) | grep "Updated branch"
+        git branch -vv | awk "/: gone]/ {print \$1}" | xargs -r git branch -d
+        ;;
+    *)
+        head_branch=$(git remote show $1 | grep "HEAD branch:" | awk '{print $3}')
+        git fetch --prune -a $1
+        git merge $1/$head_branch --no-commit --strategy-option theirs
+        git submodule update --recursive
+        ;;
+    esac
+}
+syncall() {
+    find ~/repos -name '.git' -type d | sed 's/\/.git//g' | xargs -S1024 -P 15 -I {} bash -c '
+        cd "{}"
+        git fetch --prune 2>/dev/null
+        (git pull --recurse-submodules 2>/dev/null) | grep "Updated branch"
+        git branch -vv | awk "/: gone]/ {print \$1}" | xargs -r git branch -d'
+}
+rebase() { git fetch origin && git rebase origin/$1; }
+push() {
+    if [[ $# -eq 0 ]]; then
+        read -p "Commit description: " desc
+    else
+        desc="$@"
+    fi
+    if [ "$(pwd)" = "$HOME" ]; then
+        cfg commit -a --allow-empty-message -m "$desc" && cfg push
+    else
+        git add . && git add . && git commit -a --allow-empty-message -m "$desc" && git push
+    fi
+}
+task() {
+    # set -x
+    red=$(tput setaf 1)
+    green=$(tput setaf 2)
+    reset=$(tput sgr0)
+
+    if [[ -z "${JIRA_TOKEN}" ]]; then
+        echo "Missing env. variable JIRA_TOKEN"
+    else
+        CMD=$(echo curl -k --url "https://${JIRA_URL}/rest/api/2/issue" \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --header "Accept: application/json" \
+            --header "Content-Type: application/json" \
+            --data '{
+        "fields":
+          {
+            "project": {"key": "CEP"},
+            "summary": "'"${*}"'",
+            "description": "'"${*}"'",
+            "issuetype": {"id": "6"}, 
+            "labels": ["SRE"]
+          }
+        }')
+
+        echo "$(echo ${CMD} | sed -E 's/Bearer [a-zA-Z0-9]+/Bearer *****/')"
+        echo
+        echo "Would you like to ${green}execute above cURL${reset} call ${red}[y|Y|yes]${reset} or ${green}[n|no|N]${reset}?"
+        read choice
+
+        case "$choice" in
+        y | Y | yes | Yes)
+            # set -x
+            echo "Executing."
+            KEY=$(curl -s -k --url "https://${JIRA_URL}/rest/api/2/issue" \
+                --header "Authorization: Bearer ${JIRA_TOKEN}" \
+                --header "Accept: application/json" \
+                --header "Content-Type: application/json" \
+                --data '{
+          "fields":
+            {
+              "project": {"key": "CEP"},
+              "summary": "'"${*}"'",
+              "description": "'"${*}"'",
+              "issuetype": {"id": "6"}, 
+              "labels": ["SRE"]
+            }
+          }' | jq -r '.key')
+
+            text=$(echo "${*}" | tr " " "-")
+            echo "https://${JIRA_URL}/browse/${KEY}"
+            echo "git checkout -b feature/${KEY}-${text}"
+            echo "git commit -m \"${KEY} ${*}\""
+            echo -e "
+        git checkout -b feature/${KEY}-${text}
+        git commit -m \"${KEY} ${*}\"
+        " | pbcopy
+
+            ;;
+        n | N | no) echo "No cURL call was executed" ;;
+        *) echo "invalid" ;;
+        esac
+    fi
+}
+sol() {
+    for i in $(find ./organization/*/*/* -type f -name "*.yaml" | xargs -I % sh -c 'echo %'); do
+        FN=${i##*/}
+        echo "${i}"
+        # done | fzf --preview 'bat {1}' | xargs -I % sh -c '$EDITOR %; echo %; echo % | pbcopy'
+    done >/tmp/solutions.txt
+
+    export BAT_THEME='gruvbox-dark'
+    RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case < /tmp/solutions.txt"
+
+    INITIAL_QUERY="${*:-}"
+    : | fzf --ansi --disabled --query "$INITIAL_QUERY" \
+        --bind "start:reload:$RG_PREFIX {q}" \
+        --bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
+        --bind "alt-enter:unbind(change,alt-enter)+change-prompt(2. fzf> )+enable-search+clear-query" \
+        --color "hl:-1:underline,hl+:-1:underline:reverse" \
+        --prompt '1. ripgrep> ' \
+        --delimiter ': ' \
+        --preview 'bat --color=always -l yaml $(FILE={1}; echo ${FILE#*/})' \
+        --preview-window 'up,80%,border-bottom,+{2}+3/3,~3' \
+        --bind 'enter:become(code $(FILE={1}; echo ${FILE#*/}); echo $(FILE={1}; echo ${FILE#*/}); echo $(FILE={1}; echo ${FILE#*/}) | pbcopy)'
+}
+presentation() {
+    if [[ -z "${JIRA_TOKEN}" ]]; then
+        echo "Missing env. variable JIRA_TOKEN"
+    else
+        red=$(tput setaf 1)
+        green=$(tput setaf 2)
+        reset=$(tput sgr0)
+
+        JIRA_BOARD="4136" # Horizon Sprint Board identifier
+        JIRA_CURRENT_SPRINT=$(curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint?state=active" | jq '.values | .[].id')
+        JIRA_CURRENT_SPRINT_GOAL=$(curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint?state=active" | jq -r '.values | .[].goal')
+
+        JIRA_CURRENT_SPRINT_NAME=$(curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint?state=active" | jq -r '.values | .[].name')
+
+        export MAX_ENTRIES="1000"
+
+        echo "${green}Sprint Goal${reset}: ${JIRA_CURRENT_SPRINT_GOAL}"
+        echo "${green}Sprint Name${reset}: ${JIRA_CURRENT_SPRINT_NAME}"
+
+        echo "${green}Stories:${reset}"
+        curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint/${JIRA_CURRENT_SPRINT}/issue?startAt=0&maxResults=${MAX_ENTRIES}" |
+            jq -r '.issues | .[] | select(.fields.issuetype.name=="Story" and .fields.status.statusCategory.name=="Done") |
+          (
+              {
+                "key": ("* " + .key),
+                "summary": (.fields.summary),
+                "assignee": ("[" + .fields.assignee.emailAddress | split(".")[0] + "]")
+              }
+              )' | jq -sr '. |=sort_by(.assignee) | .[] | join(" ")'
+
+        echo "${green}Worth to mention:${reset}"
+        curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint/${JIRA_CURRENT_SPRINT}/issue?startAt=0&maxResults=${MAX_ENTRIES}" |
+            jq -r '.issues | .[] | select(.fields.issuetype.name=="Task") |
+          (
+              {
+                "key": ("* " + .key),
+                "summary": (.fields.summary),
+                "assignee": ("[" + .fields.assignee.emailAddress | split(".")[0] + "]")
+              }
+              )' | jq -sr '. |=sort_by(.assignee) | .[] | join(" ")'
+    fi
+
+}
+
+# Personal
+alias s='ssh server'
+alias s2='ssh server2'
+test() {
+    if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
+        (sleep 1 && open https://localhost:3560) &
+        hugo serve -p 3560 --tlsAuto --buildFuture
+    fi
+}

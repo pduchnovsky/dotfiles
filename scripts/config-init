@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+git config --global --add --bool fetch.prune true
+git config --global --add --bool push.autoSetupRemote true
+git clone --bare https://github.com/pduchnovsky/dotfiles.git $HOME/.dotfiles
+# define cfg alias locally since the dotfiles
+# aren't installed on the system yet
+function cfg {
+   git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME $@
+}
+# create a directory to backup existing dotfiles to
+mkdir -p .dotfiles-backup
+cfg checkout
+if [ $? = 0 ]; then
+  echo "Checked out dotfiles from https://github.com/pduchnovsky/dotfiles.git";
+  else
+    echo "Moving existing dotfiles to ~/.dotfiles-backup";
+    config checkout 2>&1 | egrep "\s+\." | awk {'print $1'} | xargs -I{} mv {} .dotfiles-backup/{}
+fi
+# checkout dotfiles from repo
+cfg checkout
+cfg config status.showUntrackedFiles no
+cfg config user.email 54581833+pduchnovsky@users.noreply.github.com
+cfg config user.name "Peter Duchnovsky"
+
+# Brew bundle install (from ~/Brewfile)
+brew bundle install
