@@ -1,4 +1,4 @@
-alias src='source ~/.zshrc'
+alias s='source ~/.zshrc'
 alias dot="open https://github.com/pduchnovsky/dotfiles"
 alias cfg="git --git-dir=$HOME/.dotfiles --work-tree=$HOME"
 alias cd="z"
@@ -36,7 +36,15 @@ bu() {
     fi
 }
 bb() { brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
-br() { brew uninstall --zap --cask -f $@; }
+br() {
+    for pkg in "$@"; do
+        if brew info --cask "$pkg" &>/dev/null; then
+            brew uninstall --zap --cask -f "$pkg"
+        else
+            brew uninstall --zap -f "$pkg"
+        fi
+    done
+}
 ggo() {
     open $(git remote get-url origin | awk -F'[:@/]' '{sub(/\.git$/, "", $8); print "https://"$5"/projects/"$7"/repos/"$8}')
 }
@@ -265,7 +273,7 @@ presentation() {
 }
 
 # Personal
-alias s='ssh server'
+alias s1='ssh server'
 alias s2='ssh server2'
 test() {
     if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
