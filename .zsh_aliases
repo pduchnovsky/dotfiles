@@ -8,16 +8,16 @@ if [ "$(uname)" = "Darwin" ]; then
     alias sed='gsed'
 
     # Secrets read
-    export LAN_ADDR=$(security find-generic-password -a $USER -s LAN_ADDR -w)
-    export PATH_ADDR=$(security find-generic-password -a $USER -s PATH_ADDR -w)
-    export PROXY_ADDR=$(security find-generic-password -a $USER -s PROXY_ADDR -w)
-    export SN_PASS=$(security find-generic-password -a $USER -s SN_PASS -w)
-    export JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)
-    export JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)
-    export CORP_DOMAIN=$(security find-generic-password -a $USER -s CORP_DOMAIN -w)
-    export BITBUCKET_TOKEN=$(security find-generic-password -a $USER -s BITBUCKET_TOKEN -w)
-    export BITBUCKET_USER=$(security find-generic-password -a $USER -s BITBUCKET_USER -w)
-    export BITBUCKET_ADDRESS=$(security find-generic-password -a $USER -s BITBUCKET_ADDRESS -w)
+    export LAN_ADDR=$(security find-generic-password -a $USER -s LAN_ADDR -w)                   # xx.xxx.xx
+    export PATH_ADDR=$(security find-generic-password -a $USER -s PATH_ADDR -w)                 # xxx.xx-xx.xxx
+    export PROXY_ADDR=$(security find-generic-password -a $USER -s PROXY_ADDR -w)               # x.x.x.x
+    export SN_PASS=$(security find-generic-password -a $USER -s SN_PASS -w)                     # xxxxxxxxxxxxxxx
+    export JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)                   # xxxx.x-xxx.xxx
+    export JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)               # xxxxxxxxxxxxxxx
+    export CORP_DOMAIN=$(security find-generic-password -a $USER -s CORP_DOMAIN -w)             # x-xxx.xxx
+    export BITBUCKET_TOKEN=$(security find-generic-password -a $USER -s BITBUCKET_TOKEN -w)     # xxxxxxxxxxxxxxx
+    export BITBUCKET_USER=$(security find-generic-password -a $USER -s BITBUCKET_USER -w)       # xxxxx
+    export BITBUCKET_ADDRESS=$(security find-generic-password -a $USER -s BITBUCKET_ADDRESS -w) # xxxxxx.x-xxx.xxx
 
     # SSH via PATH
     sshviapath() { ssh sse2a@$1@ssh.$PATH_ADDR; }
