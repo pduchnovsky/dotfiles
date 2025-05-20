@@ -1,3 +1,4 @@
+export HISTIGNORE="*security add-generic-password*"
 alias s='source ~/.zshrc'
 alias dot="open https://github.com/pduchnovsky/dotfiles"
 alias cfg="git --git-dir=$HOME/.dotfiles --work-tree=$HOME"
@@ -6,8 +7,9 @@ alias lzg='lazygit'
 
 if [ "$(uname)" = "Darwin" ]; then
     alias sed='gsed'
-
+    updpw() { bash -c 'security delete-generic-password -a "$USER" -s USER_PASSWORD >/dev/null 2>&1; read -s -p "Password: " pw; security add-generic-password -a $USER -s USER_PASSWORD -w "$pw"'; }
     # Secrets read
+    export USER_PASSWORD=$(security find-generic-password -a $USER -s USER_PASSWORD -w)         # xxxxxxxxxxxxxxx
     export LAN_ADDR=$(security find-generic-password -a $USER -s LAN_ADDR -w)                   # xx.xxx.xx
     export PATH_ADDR=$(security find-generic-password -a $USER -s PATH_ADDR -w)                 # xxx.xx-xx.xxx
     export PROXY_ADDR=$(security find-generic-password -a $USER -s PROXY_ADDR -w)               # x.x.x.x
@@ -48,36 +50,38 @@ br() {
 ggo() {
     open $(git remote get-url origin | awk -F'[:@/]' '{sub(/\.git$/, "", $8); print "https://"$5"/projects/"$7"/repos/"$8}')
 }
-cr() {
-    CLONED_REPOS=$(find ~/repos/ -maxdepth 2 -type d | nl -v8 -s:)
-    for project in HORIZON TFE-GCP-MODULES CS-ATRON; do
-        for repo in $(curl -k -s -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" -X GET "https://${BITBUCKET_ADDRESS}/rest/api/1.0/projects/${project}/repos?limit=1000" | jq -r '.values|.[]|.name' | sed 's|^|'"$project/"'|'); do
-            if [[ "$(grep -E "${repo}" <<<$CLONED_REPOS)" == "" ]]; then
-                git clone ssh://git@${BITBUCKET_ADDRESS}:7999/${repo}.git ~/repos/${repo}
-            fi
-        done
-    done
-}
 fr() {
-    CLONED_REPOS=$(find ~/repos/.solution_projects -maxdepth 1 -type d | nl -v8 -s:)
-    SOL_FACTORY_PROJECT="terraform-gcp-factory-solution-project"
-    if [[ ! -d "${HOME}/repos/HORIZON/${SOL_FACTORY_PROJECT}" ]]; then
-        git clone ssh://git@${BITBUCKET_ADDRESS}:7999/HORIZON/${SOL_FACTORY_PROJECT}.git ~/repos/HORIZON/${SOL_FACTORY_PROJECT}
-    fi
-    PROJECTS=$(find /Users/${USER}/repos/HORIZON/${SOL_FACTORY_PROJECT}/organization/*/*/* -type f -name "*.yaml" |
-        xargs -I % sh -c 'file="%" ;yq -o json "$file" | jq -r .vcs_project ' |
-        tr '[:lower:]' '[:upper:]' | sort | uniq | grep -v NULL)
+  clonerepo() {
+    OPT=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
     PROJECTS_ARRAY=()
-    while IFS= read -r line; do
-        PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$line/repos?limit=1000")
-    done <<<"$PROJECTS"
+    for project in ${=PROJECTS}; do
+      PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")
+    done
     TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
-        xargs -P 10 -n 1 curl -k -s -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" |
-        jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
-    if [[ ! -d "~/repos/.solution_projects/${TARGET}" ]]; then
-        git clone ssh://git@${BITBUCKET_ADDRESS}:7999/${TARGET}.git ~/repos/.solution_projects/${TARGET}
-    fi
-    cd ~/repos/.solution_projects/${TARGET}
+      xargs -P10 -n1 curl -ks -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" |
+      jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
+    [[ ! -d "$HOME/repos/${OPT}${TARGET}" ]] && git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$HOME/repos/${OPT}${TARGET}"
+    cd "$HOME/repos/${OPT}${TARGET}"
+  }
+  case "$1" in
+    sol)
+      SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
+      [[ ! -d "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT" ]] &&
+        git clone "ssh://git@$BITBUCKET_ADDRESS:7999/HORIZON/$SOL_FACTORY_PROJECT.git" "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT"
+      PROJECTS=$(find "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT/organization" -type f -name '*.yaml' -print0 |
+        xargs -0 -I % sh -c 'yq -o json "%" | jq -r .vcs_project' |
+        tr '[:lower:]' '[:upper:]' | sort -u | grep -v NULL | xargs)
+      clonerepo sol
+      ;;
+    '')
+      PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON"
+      clonerepo
+      ;;
+    *)
+      PROJECTS="$*"
+      clonerepo
+      ;;
+  esac
 }
 adm() {
     case "$1" in
