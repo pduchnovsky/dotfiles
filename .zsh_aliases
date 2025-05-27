@@ -1,6 +1,5 @@
 export HISTIGNORE="*security add-generic-password*"
 alias s='source ~/.zshrc'
-alias dot="open https://github.com/pduchnovsky/dotfiles"
 alias cd="z"
 alias lzg='lazygit'
 cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
@@ -11,7 +10,16 @@ git() {
         command git "$@"
     fi
 }
-
+dot() {
+    url="https://github.com/pduchnovsky/dotfiles"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        open -a "Vivaldi" "$url"
+    elif grep -qiE "(Microsoft|WSL)" /proc/version 2>/dev/null; then
+        "/mnt/c/Program Files (x86)/Vivaldi/Application/vivaldi.exe" "$url"
+    elif command -v xdg-open &> /dev/null; then
+        xdg-open "$url"
+    fi
+}
 if [ "$(uname)" = "Darwin" ]; then
     alias sed='gsed'
     updpw() { bash -c 'security delete-generic-password -a "$USER" -s USER_PASSWORD >/dev/null 2>&1; read -s -p "Password: " pw; security add-generic-password -a $USER -s USER_PASSWORD -w "$pw"'; }
@@ -289,10 +297,8 @@ alias 2='ssh server2'
 test() {
     if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
         if [[ "$(uname)" == "Darwin" ]]; then
-            # macOS - open Vivaldi using 'open -a'
             (sleep 1 && open -a "Vivaldi" https://localhost:3560) &
         elif grep -qEi "(Microsoft|WSL)" /proc/version &> /dev/null; then
-            # WSL - try to open Vivaldi via Windows executable
             (sleep 1 && /mnt/c/Program\ Files\ \(x86\)/Vivaldi/Application/vivaldi.exe https://localhost:3560) &
         fi
         hugo serve -p 3560 --tlsAuto --buildFuture
