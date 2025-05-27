@@ -1,9 +1,16 @@
 export HISTIGNORE="*security add-generic-password*"
 alias s='source ~/.zshrc'
 alias dot="open https://github.com/pduchnovsky/dotfiles"
-alias cfg="git --git-dir=$HOME/.dotfiles --work-tree=$HOME"
 alias cd="z"
 alias lzg='lazygit'
+cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
+git() {
+    if [ "$(pwd)" = "$HOME" ]; then
+        cfg "$@"
+    else
+        command git "$@"
+    fi
+}
 
 if [ "$(uname)" = "Darwin" ]; then
     alias sed='gsed'
@@ -277,11 +284,17 @@ presentation() {
 }
 
 # Personal
-alias s1='ssh server'
-alias s2='ssh server2'
+alias 1='ssh server'
+alias 2='ssh server2'
 test() {
     if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
-        (sleep 1 && open https://localhost:3560) &
+        if [[ "$(uname)" == "Darwin" ]]; then
+            # macOS - open Vivaldi using 'open -a'
+            (sleep 1 && open -a "Vivaldi" https://localhost:3560) &
+        elif grep -qEi "(Microsoft|WSL)" /proc/version &> /dev/null; then
+            # WSL - try to open Vivaldi via Windows executable
+            (sleep 1 && /mnt/c/Program\ Files\ \(x86\)/Vivaldi/Application/vivaldi.exe https://localhost:3560) &
+        fi
         hugo serve -p 3560 --tlsAuto --buildFuture
     fi
 }
