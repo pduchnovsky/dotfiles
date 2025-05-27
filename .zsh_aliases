@@ -16,7 +16,7 @@ dot() {
         open -a "Vivaldi" "$url"
     elif grep -qiE "(Microsoft|WSL)" /proc/version 2>/dev/null; then
         "/mnt/c/Program Files (x86)/Vivaldi/Application/vivaldi.exe" "$url"
-    elif command -v xdg-open &> /dev/null; then
+    elif command -v xdg-open &>/dev/null; then
         xdg-open "$url"
     fi
 }
@@ -66,37 +66,38 @@ ggo() {
     open $(git remote get-url origin | awk -F'[:@/]' '{sub(/\.git$/, "", $8); print "https://"$5"/projects/"$7"/repos/"$8}')
 }
 fr() {
-  clonerepo() {
-    OPT=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
-    PROJECTS_ARRAY=()
-    for project in ${=PROJECTS}; do
-      PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")
-    done
-    TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
-      xargs -P10 -n1 curl -ks -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" |
-      jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
-    [[ ! -d "$HOME/repos/${OPT}${TARGET}" ]] && git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$HOME/repos/${OPT}${TARGET}"
-    cd "$HOME/repos/${OPT}${TARGET}"
-  }
-  case "$1" in
+    clonerepo() {
+        OPT=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
+        PROJECTS_ARRAY=()
+        read -a projects_array <<<"$PROJECTS" 2>/dev/null || read -A projects_array <<<"$PROJECTS"
+        for project in "${projects_array[@]}"; do
+            PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")
+        done
+        TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
+            xargs -P10 -n1 curl -ks -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" |
+            jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
+        [[ ! -d "$HOME/repos/${OPT}${TARGET}" ]] && git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$HOME/repos/${OPT}${TARGET}"
+        cd "$HOME/repos/${OPT}${TARGET}"
+    }
+    case "$1" in
     sol)
-      SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
-      [[ ! -d "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT" ]] &&
-        git clone "ssh://git@$BITBUCKET_ADDRESS:7999/HORIZON/$SOL_FACTORY_PROJECT.git" "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT"
-      PROJECTS=$(find "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT/organization" -type f -name '*.yaml' -print0 |
-        xargs -0 -I % sh -c 'yq -o json "%" | jq -r .vcs_project' |
-        tr '[:lower:]' '[:upper:]' | sort -u | grep -v NULL | xargs)
-      clonerepo sol
-      ;;
+        SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
+        [[ ! -d "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT" ]] &&
+            git clone "ssh://git@$BITBUCKET_ADDRESS:7999/HORIZON/$SOL_FACTORY_PROJECT.git" "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT"
+        PROJECTS=$(find "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT/organization" -type f -name '*.yaml' -print0 |
+            xargs -0 -I % sh -c 'yq -o json "%" | jq -r .vcs_project' |
+            tr '[:lower:]' '[:upper:]' | sort -u | grep -v NULL | xargs)
+        clonerepo sol
+        ;;
     '')
-      PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON"
-      clonerepo
-      ;;
+        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON"
+        clonerepo
+        ;;
     *)
-      PROJECTS="$*"
-      clonerepo
-      ;;
-  esac
+        PROJECTS="$*"
+        clonerepo
+        ;;
+    esac
 }
 adm() {
     case "$1" in
@@ -298,7 +299,7 @@ test() {
     if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
         if [[ "$(uname)" == "Darwin" ]]; then
             (sleep 1 && open -a "Vivaldi" https://localhost:3560) &
-        elif grep -qEi "(Microsoft|WSL)" /proc/version &> /dev/null; then
+        elif grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
             (sleep 1 && /mnt/c/Program\ Files\ \(x86\)/Vivaldi/Application/vivaldi.exe https://localhost:3560) &
         fi
         hugo serve -p 3560 --tlsAuto --buildFuture
