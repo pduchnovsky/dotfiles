@@ -1,26 +1,42 @@
-alias src='source ~/.zshrc'
-alias dot="open https://github.com/pduchnovsky/dotfiles"
-alias cfg="git --git-dir=$HOME/.dotfiles --work-tree=$HOME"
+export HISTIGNORE="*security add-generic-password*"
+alias s='source ~/.zshrc'
 alias cd="z"
 alias lzg='lazygit'
-
+cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
+git() {
+    if [ "$(pwd)" = "$HOME" ]; then
+        cfg "$@"
+    else
+        command git "$@"
+    fi
+}
+dot() {
+    url="https://github.com/pduchnovsky/dotfiles"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        open -a "Vivaldi" "$url"
+    elif grep -qiE "(Microsoft|WSL)" /proc/version 2>/dev/null; then
+        "/mnt/c/Program Files (x86)/Vivaldi/Application/vivaldi.exe" "$url"
+    elif command -v xdg-open &>/dev/null; then
+        xdg-open "$url"
+    fi
+}
 if [ "$(uname)" = "Darwin" ]; then
     alias sed='gsed'
-
+    updpw() { bash -c 'security delete-generic-password -a "$USER" -s USER_PASSWORD >/dev/null 2>&1; read -s -p "Password: " pw; security add-generic-password -a $USER -s USER_PASSWORD -w "$pw"'; }
     # Secrets read
-    export LAN_ADDR=$(security find-generic-password -a $USER -s LAN_ADDR -w)
-    export PATH_ADDR=$(security find-generic-password -a $USER -s PATH_ADDR -w)
-    export PROXY_ADDR=$(security find-generic-password -a $USER -s PROXY_ADDR -w)
-    export SN_PASS=$(security find-generic-password -a $USER -s SN_PASS -w)
-    export JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)
-    export JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)
-    export CORP_DOMAIN=$(security find-generic-password -a $USER -s CORP_DOMAIN -w)
-    export BITBUCKET_TOKEN=$(security find-generic-password -a $USER -s BITBUCKET_TOKEN -w)
-    export BITBUCKET_USER=$(security find-generic-password -a $USER -s BITBUCKET_USER -w)
-    export BITBUCKET_ADDRESS=$(security find-generic-password -a $USER -s BITBUCKET_ADDRESS -w)
+    export USER_PASSWORD=$(security find-generic-password -a $USER -s USER_PASSWORD -w)         # xxxxxxxxxxxxxxx
+    export LAN_ADDR=$(security find-generic-password -a $USER -s LAN_ADDR -w)                   # xx.xxx.xx
+    export PATH_ADDR=$(security find-generic-password -a $USER -s PATH_ADDR -w)                 # xxx.xx-xx.xxx
+    export PROXY_ADDR=$(security find-generic-password -a $USER -s PROXY_ADDR -w)               # x.x.x.x
+    export SN_PASS=$(security find-generic-password -a $USER -s SN_PASS -w)                     # xxxxxxxxxxxxxxx
+    export JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)                   # xxxx.x-xxx.xxx
+    export JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)               # xxxxxxxxxxxxxxx
+    export CORP_DOMAIN=$(security find-generic-password -a $USER -s CORP_DOMAIN -w)             # x-xxx.xxx
+    export BITBUCKET_TOKEN=$(security find-generic-password -a $USER -s BITBUCKET_TOKEN -w)     # xxxxxxxxxxxxxxx
+    export BITBUCKET_ADDRESS=$(security find-generic-password -a $USER -s BITBUCKET_ADDRESS -w) # xxxxxx.x-xxx.xxx
 
     # SSH via PATH
-    sshviapath() { ssh sse2a@$1@ssh.$PATH_ADDR; }
+    sshviapath() { ssh $USER@$1@ssh.$PATH_ADDR; }
     alias tffat1='sshviapath ad_alice@terraboxatf1.'$LAN_ADDR''
     alias tffat2='sshviapath ad_alice@terraboxatf2.'$LAN_ADDR''
     alias tfprod1='sshviapath ad_alice@terraboxatp1.'$LAN_ADDR''
@@ -36,40 +52,51 @@ bu() {
     fi
 }
 bb() { brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
-br() { brew uninstall --zap --cask -f $@; }
+br() {
+    for pkg in "$@"; do
+        if brew info --cask "$pkg" &>/dev/null; then
+            brew uninstall --zap --cask -f "$pkg"
+        else
+            brew uninstall --zap -f "$pkg"
+        fi
+    done
+}
 ggo() {
     open $(git remote get-url origin | awk -F'[:@/]' '{sub(/\.git$/, "", $8); print "https://"$5"/projects/"$7"/repos/"$8}')
 }
-cr() {
-    CLONED_REPOS=$(find ~/repos/ -maxdepth 2 -type d | nl -v8 -s:)
-    for project in HORIZON TFE-GCP-MODULES CS-ATRON; do
-        for repo in $(curl -k -s -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" -X GET "https://${BITBUCKET_ADDRESS}/rest/api/1.0/projects/${project}/repos?limit=1000" | jq -r '.values|.[]|.name' | sed 's|^|'"$project/"'|'); do
-            if [[ "$(grep -E "${repo}" <<<$CLONED_REPOS)" == "" ]]; then
-                git clone ssh://git@${BITBUCKET_ADDRESS}:7999/${repo}.git ~/repos/${repo}
-            fi
-        done
-    done
-}
 fr() {
-    CLONED_REPOS=$(find ~/repos/.solution_projects -maxdepth 1 -type d | nl -v8 -s:)
-    SOL_FACTORY_PROJECT="terraform-gcp-factory-solution-project"
-    if [[ ! -d "${HOME}/repos/HORIZON/${SOL_FACTORY_PROJECT}" ]]; then
-        git clone ssh://git@${BITBUCKET_ADDRESS}:7999/HORIZON/${SOL_FACTORY_PROJECT}.git ~/repos/HORIZON/${SOL_FACTORY_PROJECT}
-    fi
-    PROJECTS=$(find /Users/${USER}/repos/HORIZON/${SOL_FACTORY_PROJECT}/organization/*/*/* -type f -name "*.yaml" |
-        xargs -I % sh -c 'file="%" ;yq -o json "$file" | jq -r .vcs_project ' |
-        tr '[:lower:]' '[:upper:]' | sort | uniq | grep -v NULL)
-    PROJECTS_ARRAY=()
-    while IFS= read -r line; do
-        PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$line/repos?limit=1000")
-    done <<<"$PROJECTS"
-    TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
-        xargs -P 10 -n 1 curl -k -s -u "${BITBUCKET_USER}:$BITBUCKET_TOKEN" |
-        jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
-    if [[ ! -d "~/repos/.solution_projects/${TARGET}" ]]; then
-        git clone ssh://git@${BITBUCKET_ADDRESS}:7999/${TARGET}.git ~/repos/.solution_projects/${TARGET}
-    fi
-    cd ~/repos/.solution_projects/${TARGET}
+    clonerepo() {
+        OPT=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
+        PROJECTS_ARRAY=()
+        read -a projects_array <<<"$PROJECTS" 2>/dev/null || read -A projects_array <<<"$PROJECTS"
+        for project in "${projects_array[@]}"; do
+            PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")
+        done
+        TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
+            xargs -P10 -n1 curl -ks -u "${USER}:$BITBUCKET_TOKEN" |
+            jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
+        [[ ! -d "$HOME/repos/${OPT}${TARGET}" ]] && git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$HOME/repos/${OPT}${TARGET}"
+        cd "$HOME/repos/${OPT}${TARGET}"
+    }
+    case "$1" in
+    sol)
+        SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
+        [[ ! -d "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT" ]] &&
+            git clone "ssh://git@$BITBUCKET_ADDRESS:7999/HORIZON/$SOL_FACTORY_PROJECT.git" "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT"
+        PROJECTS=$(find "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT/organization" -type f -name '*.yaml' -print0 |
+            xargs -0 -I % sh -c 'yq -o json "%" | jq -r .vcs_project' |
+            tr '[:lower:]' '[:upper:]' | sort -u | grep -v NULL | xargs)
+        clonerepo sol
+        ;;
+    '')
+        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON"
+        clonerepo
+        ;;
+    *)
+        PROJECTS="$*"
+        clonerepo
+        ;;
+    esac
 }
 adm() {
     case "$1" in
@@ -93,7 +120,7 @@ cg() {
 sync() {
     case "$1" in
     "")
-        git fetch --prune -a
+        git fetch --all --prune -a
         (git pull --recurse-submodules 2>/dev/null) | grep "Updated branch"
         git branch -vv | awk "/: gone]/ {print \$1}" | xargs -r git branch -d
         ;;
@@ -106,11 +133,11 @@ sync() {
     esac
 }
 syncall() {
-    find ~/repos -name '.git' -type d | sed 's/\/.git//g' | xargs -S1024 -P 15 -I {} bash -c '
-        cd "{}"
-        git fetch --prune 2>/dev/null
-        (git pull --recurse-submodules 2>/dev/null) | grep "Updated branch"
-        git branch -vv | awk "/: gone]/ {print \$1}" | xargs -r git branch -d'
+    find ~/repos -name '.git' -type d | xargs -S1024 -P 15 -I {} bash -c "
+        git --git-dir={} --work-tree={}/.. fetch --all --prune 2>/dev/null
+        (git --git-dir={} --work-tree={}/.. pull --recurse-submodules 2>/dev/null) | grep Updated
+        git --git-dir={} --work-tree={}/.. branch -vv | awk \"/: gone]/ {print \$1}\" | xargs -r git branch -d
+    "
 }
 rebase() { git fetch origin && git rebase origin/$1; }
 push() {
@@ -265,11 +292,15 @@ presentation() {
 }
 
 # Personal
-alias s='ssh server'
-alias s2='ssh server2'
+alias 1='ssh server'
+alias 2='ssh server2'
 test() {
     if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
-        (sleep 1 && open https://localhost:3560) &
+        if [[ "$(uname)" == "Darwin" ]]; then
+            (sleep 1 && open -a "Vivaldi" https://localhost:3560) &
+        elif grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
+            (sleep 1 && /mnt/c/Program\ Files\ \(x86\)/Vivaldi/Application/vivaldi.exe https://localhost:3560) &
+        fi
         hugo serve -p 3560 --tlsAuto --buildFuture
     fi
 }

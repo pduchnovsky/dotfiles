@@ -9,15 +9,11 @@
 # @raycast.icon 🤖
 # @raycast.packageName routes
 
-myserver=10.10.10.2
-
-if (netstat -nr -f inet | grep ^default | grep tun); then
-    sudo route delete $myserver
-    if (ifconfig en6 | grep "inet " | grep -v 127.0.0.1 | cut -d\  -f2 | grep "${myserver%${myserver##*.}}"); then
-        sudo route add -host $myserver -interface en6
-    elif (ifconfig en0 | grep "inet " | grep -v 127.0.0.1 | cut -d\  -f2 | grep "${myserver%${myserver##*.}}"); then
-        sudo route add -host $myserver -interface en0
-    fi
+s=10.10.10.2
+if netstat -nr -f inet | grep ^default | grep -q tun; then
+    sudo route delete $s 2>/dev/null
+    i=$(ifconfig | awk -v p="${s%.*}" '$1 ~ /^[a-z0-9]+:/ {i=$1; sub(":", "", i)} $1=="inet" && $2 ~ "^"p"." {print i; exit}')
+    [ -n "$i" ] && sudo route add -host $s -interface $i
 else
-    sudo route delete $myserver
+    sudo route delete $s 2>/dev/null
 fi
