@@ -36,11 +36,11 @@ if [ "$(uname)" = "Darwin" ]; then
     export BITBUCKET_ADDRESS=$(security find-generic-password -a $USER -s BITBUCKET_ADDRESS -w) # xxxxxx.x-xxx.xxx
 
     # SSH via PATH
-    sshviapath() { ssh $USER@$1@ssh.$PATH_ADDR; }
-    alias tffat1='sshviapath ad_alice@terraboxatf1.'$LAN_ADDR''
-    alias tffat2='sshviapath ad_alice@terraboxatf2.'$LAN_ADDR''
-    alias tfprod1='sshviapath ad_alice@terraboxatp1.'$LAN_ADDR''
-    alias tfprod2='sshviapath ad_alice@terraboxatp2.'$LAN_ADDR''
+    sshviapath() { ssh $USER@ad_alice@$1.$LAN_ADDR@ssh.$PATH_ADDR; }
+    alias tffat1='sshviapath terraboxatf1'
+    alias tffat2='sshviapath terraboxatf2'
+    alias tfprod1='sshviapath terraboxatp1'
+    alias tfprod2='sshviapath terraboxatp2'
 fi
 
 tf() { terraform $@; }
@@ -117,6 +117,10 @@ cg() {
         done
     done
 }
+pack() {
+    current_dir_name=$(basename "$(pwd -P)")
+    (cd .. && zip -r "$HOME/Downloads/${current_dir_name}.zip" "${current_dir_name}" -x "${current_dir_name}/.git/*" -x "${current_dir_name}/.git")
+}
 sync() {
     case "$1" in
     "")
@@ -133,11 +137,11 @@ sync() {
     esac
 }
 syncall() {
-    find ~/repos -name '.git' -type d | xargs -S1024 -P 15 -I {} bash -c "
+    find ~/repos -name '.git' -type d | xargs -S1024 -P 15 -I {} bash -c "echo {} | sed 's/\/.git//' && (
         git --git-dir={} --work-tree={}/.. fetch --all --prune 2>/dev/null
         (git --git-dir={} --work-tree={}/.. pull --recurse-submodules 2>/dev/null) | grep Updated
         git --git-dir={} --work-tree={}/.. branch -vv | awk \"/: gone]/ {print \$1}\" | xargs -r git branch -d
-    "
+    )"
 }
 rebase() { git fetch origin && git rebase origin/$1; }
 push() {
