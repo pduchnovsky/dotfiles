@@ -41,10 +41,6 @@ if [ "$(uname)" = "Darwin" ]; then
     alias tffat2='sshviapath terraboxatf2'
     alias tfprod1='sshviapath terraboxatp1'
     alias tfprod2='sshviapath terraboxatp2'
-
-    # SVN
-    export SVN_USER=$(security find-generic-password -a $USER -s SVN_USER -w)
-    export SVN_PW=$(security find-generic-password -a $USER -s SVN_PW -w)
 fi
 
 tf() { terraform $@; }
@@ -312,100 +308,4 @@ test() {
         fi
         hugo serve -p 3560 --tlsAuto --buildFuture
     fi
-}
-release() {
-    local PLUGIN_SLUG="custom-htaccess-rules"
-    local GIT_REPO_ROOT="$(pwd)"
-    local SVN_CHECKOUT_ROOT="${GIT_REPO_ROOT}/../${PLUGIN_SLUG}-svn"
-
-    # --- Pre-flight Checks ---
-    CURRENT_DIR_NAME="$(basename "$GIT_REPO_ROOT")"
-    if [ "$CURRENT_DIR_NAME" != "$PLUGIN_SLUG" ]; then
-        echo "Error: Current directory name '$CURRENT_DIR_NAME' does not match PLUGIN_SLUG='$PLUGIN_SLUG'." >&2
-        echo "Please run this script from the root directory of the plugin repository." >&2
-        return 1
-    fi
-    
-    if [ ! -d "$SVN_CHECKOUT_ROOT" ]; then
-        echo "📦 SVN checkout directory not found. Attempting to check out to: $SVN_CHECKOUT_ROOT"
-
-        if [ -n "$SVN_USER" ] && [ -n "$SVN_PW" ]; then
-            svn co "https://plugins.svn.wordpress.org/$PLUGIN_SLUG/" "$SVN_CHECKOUT_ROOT" \
-                --username "$SVN_USER" --password "$SVN_PW" || {
-                echo "❌ Error: Failed to check out SVN repository." >&2
-                return 1
-            }
-        else
-            svn co "https://plugins.svn.wordpress.org/$PLUGIN_SLUG/" "$SVN_CHECKOUT_ROOT" || {
-                echo "❌ Error: Failed to check out SVN repository." >&2
-                return 1
-            }
-        fi
-
-        echo "✅ SVN checkout completed successfully."
-    fi
-    if [ -z "$SVN_USER" ] || [ -z "$SVN_PW" ]; then
-        echo "Error: SVN_USER or SVN_PW environment variables are not set." >&2
-        return 1
-    fi
-
-    # --- Get Version from readme.txt ---
-    local NEW_VERSION=$(grep -m 1 "Stable tag:" "$GIT_REPO_ROOT/readme.txt" | awk -F':' '{print $2}' | tr -d '[:space:]')
-    if [ -z "$NEW_VERSION" ]; then
-        echo "Error: Could not find 'Stable tag:' in readme.txt." >&2
-        return 1
-    fi
-    echo "--- Preparing release for $PLUGIN_SLUG version $NEW_VERSION ---"
-
-    # --- Update SVN Checkout ---
-    echo "1/5: Updating SVN checkout..."
-    pushd "$SVN_CHECKOUT_ROOT" > /dev/null || return 1
-    svn update --username "$SVN_USER" --password "$SVN_PW" || { echo "Error: SVN update failed." >&2; popd > /dev/null; return 1; }
-    popd > /dev/null
-
-    # --- Copy Files to SVN Checkout ---
-    echo "2/5: Copying files to SVN trunk..."
-
-    # Clear and copy assets
-    (cd "$SVN_CHECKOUT_ROOT/assets" && find . -maxdepth 1 -mindepth 1 ! -name ".svn" -exec rm -rf {} +)
-    cp -R "$GIT_REPO_ROOT/assets/"* "$SVN_CHECKOUT_ROOT/assets/" || { echo "Error: Failed to copy assets." >&2; return 1; }
-
-    # Clear and copy plugin files to trunk
-    (cd "$SVN_CHECKOUT_ROOT/trunk" && find . -maxdepth 1 -mindepth 1 ! -name ".svn" -exec rm -rf {} +)
-    cp "$GIT_REPO_ROOT/custom-htaccess-rules.php" "$SVN_CHECKOUT_ROOT/trunk/" || return 1
-    cp -R "$GIT_REPO_ROOT/languages" "$SVN_CHECKOUT_ROOT/trunk/" || return 1
-    cp "$GIT_REPO_ROOT/LICENSE" "$SVN_CHECKOUT_ROOT/trunk/" || return 1
-    cp "$GIT_REPO_ROOT/readme.txt" "$SVN_CHECKOUT_ROOT/trunk/" || return 1
-
-    # --- SVN Commit to trunk ---
-    echo "3/5: Committing changes to trunk..."
-    pushd "$SVN_CHECKOUT_ROOT" > /dev/null || return 1
-
-    svn add --force . > /dev/null 2>&1
-    svn status | grep '^!' | awk '{print $2}' | xargs -I {} svn rm {} > /dev/null 2>&1 || true
-
-    svn commit -m "Update trunk and assets for version $NEW_VERSION" --username "$SVN_USER" --password "$SVN_PW" || { popd > /dev/null; return 1; }
-    popd > /dev/null
-
-    # --- Tag the release ---
-    echo "4/5: Creating tag for version $NEW_VERSION..."
-    pushd "$SVN_CHECKOUT_ROOT" > /dev/null || return 1
-    if svn info "https://plugins.svn.wordpress.org/$PLUGIN_SLUG/tags/$NEW_VERSION" >/dev/null 2>&1; then
-        echo "⚠️  Tag tags/$NEW_VERSION already exists. Overwriting it..."
-
-        # Delete the remote tag
-        svn delete "https://plugins.svn.wordpress.org/$PLUGIN_SLUG/tags/$NEW_VERSION" \
-            -m "Delete existing tag $NEW_VERSION to recreate it" \
-            --username "$SVN_USER" --password "$SVN_PW" || { echo "Error: Failed to delete existing tag." >&2; popd > /dev/null; return 1; }
-
-        # Update local SVN copy
-        svn update --username "$SVN_USER" --password "$SVN_PW"
-    fi
-
-    svn copy trunk "tags/$NEW_VERSION" || { popd > /dev/null; return 1; }
-    svn commit -m "Tagging version $NEW_VERSION" --username "$SVN_USER" --password "$SVN_PW" || { popd > /dev/null; return 1; }
-    popd > /dev/null
-
-    echo "--- ✅ Release $NEW_VERSION completed successfully! ---"
-    echo "Check your plugin page on WordPress.org in 10-30 minutes to verify updates."
 }

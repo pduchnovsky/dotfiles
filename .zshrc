@@ -131,10 +131,12 @@ export PATH="$(brew --prefix python)/libexec/bin:$PATH"
 # CA Bundle allowed
 CERT_PATH=$(python3 -m certifi)
 export SSL_CERT_FILE=${CERT_PATH}
+export CURL_CA_BUNDLE=${CERT_PATH}
 export REQUESTS_CA_BUNDLE=${CERT_PATH}
+export HTTPLIB2_CA_CERTS=${CERT_PATH}
 
 # Cache ssh key pw
-eval `keychain --quiet --eval ~/.ssh/id_ed25519` 2>&1 >/dev/null
+eval `keychain --quiet --eval ~/.ssh/id_ed25519` >/dev/null 2>&1
 
 # Disable highlighting eol
 PROMPT_EOL_MARK=''
