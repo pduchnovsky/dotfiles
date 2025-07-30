@@ -21,26 +21,30 @@ dot() {
     fi
 }
 if [ "$(uname)" = "Darwin" ]; then
+    fgp() { security find-generic-password -a $USER -s $1 -w; }
     alias sed='gsed'
-    updpw() { bash -c 'security delete-generic-password -a "$USER" -s USER_PASSWORD >/dev/null 2>&1; read -s -p "Password: " pw; security add-generic-password -a $USER -s USER_PASSWORD -w "$pw"'; }
+
     # Secrets read
-    export USER_PASSWORD=$(security find-generic-password -a $USER -s USER_PASSWORD -w)         # xxxxxxxxxxxxxxx
-    export LAN_ADDR=$(security find-generic-password -a $USER -s LAN_ADDR -w)                   # xx.xxx.xx
-    export PATH_ADDR=$(security find-generic-password -a $USER -s PATH_ADDR -w)                 # xxx.xx-xx.xxx
-    export PROXY_ADDR=$(security find-generic-password -a $USER -s PROXY_ADDR -w)               # x.x.x.x
-    export SN_PASS=$(security find-generic-password -a $USER -s SN_PASS -w)                     # xxxxxxxxxxxxxxx
-    export JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)                   # xxxx.x-xxx.xxx
-    export JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)               # xxxxxxxxxxxxxxx
-    export CORP_DOMAIN=$(security find-generic-password -a $USER -s CORP_DOMAIN -w)             # x-xxx.xxx
-    export BITBUCKET_TOKEN=$(security find-generic-password -a $USER -s BITBUCKET_TOKEN -w)     # xxxxxxxxxxxxxxx
-    export BITBUCKET_ADDRESS=$(security find-generic-password -a $USER -s BITBUCKET_ADDRESS -w) # xxxxxx.x-xxx.xxx
+    export LAN_ADDR=$(fgp LAN_ADDR)                   # xx.xxx.xx
+    export PATH_ADDR=$(fgp PATH_ADDR)                 # xxx.xx-xx.xxx
+    export PROXY_ADDR=$(fgp PROXY_ADDR)               # x.x.x.x
+    export SN_PASS=$(fgp SN_PASS)                     # xxxxxxxxxxxxxxx
+    export JIRA_URL=$(fgp JIRA_URL)                   # xxxx.x-xxx.xxx
+    export JIRA_TOKEN=$(fgp JIRA_TOKEN)               # xxxxxxxxxxxxxxx
+    export CORP_DOMAIN=$(fgp CORP_DOMAIN)             # x-xxx.xxx
+    export BITBUCKET_TOKEN=$(fgp BITBUCKET_TOKEN)     # xxxxxxxxxxxxxxx
+    export BITBUCKET_ADDRESS=$(fgp BITBUCKET_ADDRESS) # xxxxxx.x-xxx.xxx
+    export TWINE_USERNAME=$(fgp TWINE_USERNAME)       # xxxxxx-xxxxxxx-xxxxx
+    export TWINE_PASSWORD=$(fgp TWINE_PASSWORD)       # xxxxxxxxxxxxxxx
 
     # SSH via PATH
-    sshviapath() { ssh $USER@ad_alice@$1.$LAN_ADDR@ssh.$PATH_ADDR; }
-    alias tffat1='sshviapath terraboxatf1'
-    alias tffat2='sshviapath terraboxatf2'
-    alias tfprod1='sshviapath terraboxatp1'
-    alias tfprod2='sshviapath terraboxatp2'
+    sshviapath() { ssh $USER@$1@$2.$LAN_ADDR@ssh.$PATH_ADDR; }
+    alias tffat1='sshviapath ad_alice terraboxatf1'
+    alias tffat2='sshviapath ad_alice terraboxatf2'
+    alias tfprod1='sshviapath ad_alice terraboxatp1'
+    alias tfprod2='sshviapath ad_alice terraboxatp2'
+    alias iris1='sshviapath '$USER' ibis1'
+    alias iris2='sshviapath '$USER' ibis2'
 fi
 
 tf() { terraform $@; }
@@ -220,28 +224,30 @@ task() {
         esac
     fi
 }
-sol() {
-    for i in $(find ./organization/*/*/* -type f -name "*.yaml" | xargs -I % sh -c 'echo %'); do
-        FN=${i##*/}
-        echo "${i}"
-        # done | fzf --preview 'bat {1}' | xargs -I % sh -c '$EDITOR %; echo %; echo % | pbcopy'
-    done >/tmp/solutions.txt
-
-    export BAT_THEME='gruvbox-dark'
-    RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case < /tmp/solutions.txt"
-
-    INITIAL_QUERY="${*:-}"
-    : | fzf --ansi --disabled --query "$INITIAL_QUERY" \
-        --bind "start:reload:$RG_PREFIX {q}" \
-        --bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
-        --bind "alt-enter:unbind(change,alt-enter)+change-prompt(2. fzf> )+enable-search+clear-query" \
-        --color "hl:-1:underline,hl+:-1:underline:reverse" \
-        --prompt '1. ripgrep> ' \
-        --delimiter ': ' \
-        --preview 'bat --color=always -l yaml $(FILE={1}; echo ${FILE#*/})' \
-        --preview-window 'up,80%,border-bottom,+{2}+3/3,~3' \
-        --bind 'enter:become(code $(FILE={1}; echo ${FILE#*/}); echo $(FILE={1}; echo ${FILE#*/}); echo $(FILE={1}; echo ${FILE#*/}) | pbcopy)'
-}
+sn() {(
+    SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
+    cd $HOME/repos/HORIZON/$SOL_FACTORY_PROJECT
+    source tools/venv_solf/bin/activate
+    pip install --index https://${TWINE_USERNAME}:${TWINE_PASSWORD}@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple --upgrade ed-python-utils > /dev/null 2>&1
+    pip install -r tools/requirements.txt > /dev/null 2>&1
+    export RITM=$1
+    python3 -c '''
+from pprint import pprint
+import os
+ritm = os.getenv("RITM")
+from python_utils.service_now.utils import (
+get_sysids, 
+get_sn_tfvariables, 
+sysids_url, 
+sn_payload_url)
+sn_pass = os.getenv("SN_PASS", None)
+sn_pairs = get_sysids(username="horizon.rest", password=sn_pass, url=sysids_url, ritms=[ritm])
+p = get_sn_tfvariables("horizon.rest", sn_pass, sn_payload_url, list(sn_pairs.values())[0])
+values = {}
+[values.update({i["name"]: i["value"]}) for i in p["records"][0]["variables"]]
+pprint(values)
+'''
+)}
 presentation() {
     if [[ -z "${JIRA_TOKEN}" ]]; then
         echo "Missing env. variable JIRA_TOKEN"
