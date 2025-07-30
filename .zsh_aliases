@@ -142,11 +142,30 @@ sync() {
     esac
 }
 syncall() {
-    find ~/repos -name '.git' -type d | xargs -S1024 -P 15 -I {} bash -c "echo {} | sed 's/\/.git//' && (
-        git --git-dir={} --work-tree={}/.. fetch --all --prune 2>/dev/null
-        (git --git-dir={} --work-tree={}/.. pull --recurse-submodules 2>/dev/null) | grep Updated
-        git --git-dir={} --work-tree={}/.. branch -vv | awk \"/: gone]/ {print \$1}\" | xargs -r git branch -d
-    )"
+    find ~/repos -name '.git' -type d | xargs -n 1 -P 15 -S 1024 -I {} bash -c '
+        repo_path="$(dirname "{}")"
+
+        cd "$repo_path" || {
+            echo "[ERROR] $repo_path: Failed to cd" >&2
+            exit 1
+        }
+
+        # Run git fetch and suppress normal output
+        git fetch --all --prune > /dev/null 2>&1 || \
+            echo "[ERROR] $repo_path: fetch failed"
+
+        # Run git pull, suppress "Already up to date" and show only real errors
+        pull_output=$(git pull --recurse-submodules 2>&1)
+        if [ $? -ne 0 ]; then
+            echo "[ERROR] $repo_path: pull failed: $pull_output"
+        fi
+
+        # Delete gone branches if any
+        gone_branches=$(git branch -vv | awk "/: gone]/ {print \$1}")
+        if [ -n "$gone_branches" ]; then
+            echo "$gone_branches" | xargs -r git branch -D 2>&1
+        fi
+    '
 }
 rebase() { git fetch origin && git rebase origin/$1; }
 push() {
