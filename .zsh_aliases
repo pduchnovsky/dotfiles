@@ -10,6 +10,10 @@ git() {
         command git "$@"
     fi
 }
+b() {
+    default_branch=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+    gco $default_branch && sync
+}
 dot() {
     url="https://github.com/pduchnovsky/dotfiles"
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -43,8 +47,8 @@ if [ "$(uname)" = "Darwin" ]; then
     alias tffat2='sshviapath ad_alice terraboxatf2'
     alias tfprod1='sshviapath ad_alice terraboxatp1'
     alias tfprod2='sshviapath ad_alice terraboxatp2'
-    alias iris1='sshviapath '$USER' ibis1'
-    alias iris2='sshviapath '$USER' ibis2'
+    alias ibis1='sshviapath '$USER' ibis1'
+    alias ibis2='sshviapath '$USER' ibis2'
 fi
 
 tf() { terraform $@; }
