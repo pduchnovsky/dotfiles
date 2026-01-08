@@ -1,0 +1,360 @@
+export HISTIGNORE="*security add-generic-password*"
+alias s='source ~/.zshrc'
+alias cd="z"
+alias lzg='lazygit'
+cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
+git() {
+    if [ "$(pwd)" = "$HOME" ]; then
+        cfg "$@"
+    else
+        command git "$@"
+    fi
+}
+p() { system_profiler SPPowerDataType | grep -E "Wattage|Amperage|Voltage"; }
+b() {
+    default_branch=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+    gco $default_branch && sync
+}
+ba() {
+    original_dir=$(pwd)
+    for i in $(find ~/repos -name '.git' -type d); do
+        cd "$(dirname "$i")" || {
+            echo "[ERROR] $(dirname "$i"): Failed to cd" >&2
+            continue
+        }
+
+        b || echo "[ERROR] $(dirname "$i"): b() failed"
+
+        cd "$original_dir" || {
+            echo "[ERROR] Failed to return to $original_dir" >&2
+            exit 1
+        }
+    done
+}
+dot() {
+    url="https://github.com/pduchnovsky/dotfiles"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        open -a "Vivaldi" "$url"
+    elif grep -qiE "(Microsoft|WSL)" /proc/version 2>/dev/null; then
+        "/mnt/c/Program Files (x86)/Vivaldi/Application/vivaldi.exe" "$url"
+    elif command -v xdg-open &>/dev/null; then
+        xdg-open "$url"
+    fi
+}
+if [ "$(uname)" = "Darwin" ]; then
+    fgp() { security find-generic-password -a $USER -s $1 -w; }
+    alias sed='gsed'
+
+    # Secrets read
+    export LAN_ADDR=$(fgp LAN_ADDR)                   # xx.xxx.xx
+    export PATH_ADDR=$(fgp PATH_ADDR)                 # xxx.xx-xx.xxx
+    export PROXY_ADDR=$(fgp PROXY_ADDR)               # x.x.x.x
+    export SN_PASS=$(fgp SN_PASS)                     # xxxxxxxxxxxxxxx
+    export JIRA_URL=$(fgp JIRA_URL)                   # xxxx.x-xxx.xxx
+    export JIRA_TOKEN=$(fgp JIRA_TOKEN)               # xxxxxxxxxxxxxxx
+    export CORP_DOMAIN=$(fgp CORP_DOMAIN)             # x-xxx.xxx
+    export BITBUCKET_TOKEN=$(fgp BITBUCKET_TOKEN)     # xxxxxxxxxxxxxxx
+    export BITBUCKET_ADDRESS=$(fgp BITBUCKET_ADDRESS) # xxxxxx.x-xxx.xxx
+    export TWINE_USERNAME=$(fgp TWINE_USERNAME)       # xxxxxx-xxxxxxx-xxxxx
+    export TWINE_PASSWORD=$(fgp TWINE_PASSWORD)       # xxxxxxxxxxxxxxx
+
+    # SSH via PATH
+    sshviapath() { ssh $USER@$1@$2.$LAN_ADDR@ssh.$PATH_ADDR; }
+    alias tffat1='sshviapath ad_alice terraboxatf1'
+    alias tffat2='sshviapath ad_alice terraboxatf2'
+    alias tfprod1='sshviapath ad_alice terraboxatp1'
+    alias tfprod2='sshviapath ad_alice terraboxatp2'
+    alias ibis1='sshviapath '$USER' ibis1'
+    alias ibis2='sshviapath '$USER' ibis2'
+fi
+
+tf() { terraform $@; }
+brew() {
+    if ping -c1 -W1 $PROXY_ADDR &>/dev/null; then
+        ALL_PROXY=socks5://$PROXY_ADDR:5678 /opt/homebrew/bin/brew $@
+    else
+        /opt/homebrew/bin/brew $@
+    fi
+}
+bb() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
+bu() {
+    HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew upgrade --greedy
+    cp ~/Documents/pics/vivaldi.icns /Applications/Vivaldi.app/Contents/Resources/app.icns
+}
+br() {
+    for pkg in "$@"; do
+        if brew info --cask "$pkg" &>/dev/null; then
+            brew uninstall --zap --cask -f "$pkg"
+        else
+            brew uninstall --zap -f "$pkg"
+        fi
+    done
+}
+ggo() {
+    open $(git remote get-url origin | awk -F'[:@/]' '{sub(/\.git$/, "", $8); print "https://"$5"/projects/"$7"/repos/"$8}')
+}
+fr() {
+    clonerepo() {
+        OPT=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
+        PROJECTS_ARRAY=()
+        read -a projects_array <<<"$PROJECTS" 2>/dev/null || read -A projects_array <<<"$PROJECTS"
+        for project in "${projects_array[@]}"; do
+            PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")
+        done
+        TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
+            xargs -P10 -n1 curl -ks -u "${USER}:$BITBUCKET_TOKEN" |
+            jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
+        [[ ! -d "$HOME/repos/${OPT}${TARGET}" ]] && command git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$HOME/repos/${OPT}${TARGET}"
+        cd "$HOME/repos/${OPT}${TARGET}"
+    }
+    case "$1" in
+    sol)
+        SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
+        [[ ! -d "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT" ]] &&
+            git clone "ssh://git@$BITBUCKET_ADDRESS:7999/HORIZON/$SOL_FACTORY_PROJECT.git" "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT"
+        PROJECTS=$(find "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT/organization" -type f -name '*.yaml' -print0 |
+            xargs -0 -I % sh -c 'yq -o json "%" | jq -r .vcs_project' |
+            tr '[:lower:]' '[:upper:]' | sort -u | grep -v NULL | xargs)
+        clonerepo sol
+        ;;
+    '')
+        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON"
+        clonerepo
+        ;;
+    *)
+        PROJECTS="$*"
+        clonerepo
+        ;;
+    esac
+}
+adm() {
+    case "$1" in
+    "add")
+        sudo /usr/sbin/dseditgroup -o edit -a $USER -t user admin
+        ;;
+    "rm")
+        sudo /usr/sbin/dseditgroup -o edit -d $USER -t user admin
+        ;;
+    esac
+}
+cg() {
+    for repo in $(find ~/repos -name '.git' -type d); do
+        echo $repo
+        git --git-dir="$repo" --work-tree="$repo/.." fetch -p >/dev/null && git --git-dir="$repo" --work-tree="$repo/.." gc >/dev/null 2>&1
+        for branch in $(git --git-dir="$repo" --work-tree="$repo/.." for-each-ref --format '%(refname) %(upstream:track)' refs/heads | awk '$2 == "[gone]" {sub("refs/heads/", "", $1); print $1}'); do
+            git --git-dir="$repo" --work-tree="$repo/.." branch -D $branch
+        done
+    done
+}
+pack() {
+    current_dir_name=$(basename "$(pwd -P)")
+    (cd .. && zip -r "$HOME/Downloads/${current_dir_name}.zip" "${current_dir_name}" -x "${current_dir_name}/.git/*" -x "${current_dir_name}/.git")
+}
+sync() {
+    case "$1" in
+    "")
+        git fetch --all --prune -a
+        (git pull --recurse-submodules 2>/dev/null) | grep "Updated branch"
+        git branch -vv | awk "/: gone]/ {print \$1}" | xargs -r git branch -D
+        ;;
+    *)
+        head_branch=$(git remote show $1 | grep "HEAD branch:" | awk '{print $3}')
+        git fetch --prune -a $1
+        git merge $1/$head_branch --no-commit --strategy-option theirs
+        git submodule update --recursive
+        ;;
+    esac
+}
+syncall() {
+    find ~/repos -name '.git' -type d | xargs -n 1 -P 15 -S 1024 -I {} bash -c '
+        repo_path="$(dirname "{}")"
+
+        cd "$repo_path" || {
+            echo "[ERROR] $repo_path: Failed to cd" >&2
+            exit 1
+        }
+
+        # Run git fetch and suppress normal output
+        git fetch --all --prune > /dev/null 2>&1 || \
+            echo "[ERROR] $repo_path: fetch failed"
+
+        # Run git pull, suppress "Already up to date" and show only real errors
+        pull_output=$(git pull --recurse-submodules 2>&1)
+        if [ $? -ne 0 ]; then
+            echo "[ERROR] $repo_path: pull failed: $pull_output"
+        fi
+
+        # Delete gone branches if any
+        gone_branches=$(git branch -vv | awk "/: gone]/ {print \$1}")
+        if [ -n "$gone_branches" ]; then
+            echo "$gone_branches" | xargs -r git branch -D 2>&1
+        fi
+    '
+}
+rebase() { git fetch origin && git rebase origin/$1; }
+push() {
+    if [[ $# -eq 0 ]]; then
+        read -p "Commit description: " desc
+    else
+        desc="$@"
+    fi
+    if [ "$(pwd)" = "$HOME" ]; then
+        cfg commit -a --allow-empty-message -m "$desc" && cfg push
+    else
+        git add . && git add . && git commit -a --allow-empty-message -m "$desc" && git push
+    fi
+}
+task() {
+  # set -x
+  JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)
+  JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)
+
+  red=`tput setaf 1`
+  green=`tput setaf 2`
+  reset=`tput sgr0`
+
+  if [[ -z "${JIRA_TOKEN}" ]]; then 
+    echo "Missing env. variable JIRA_TOKEN"
+  else
+    CMD=$(echo curl -k --url "https://${JIRA_URL}/rest/api/latest/issue" \
+      --header "Authorization: Bearer ${JIRA_TOKEN}" \
+      --header "Accept: application/json" \
+      --header "Content-Type: application/json" \
+      --data '{
+        "fields":
+          {
+            "project": {"key": "CEP"},
+            "summary": "'"${*}"'",
+            "description": "'"${*}"'",
+            "issuetype": {"id": "6"}, 
+            "labels": ["TEST"],
+          }
+        }')
+    
+    echo  "$(echo ${CMD} | sed -E 's/Bearer [a-zA-Z0-9]+/Bearer *****/')"
+    echo
+    echo "Would you like to ${green}execute above cURL${reset} call ${red}[y|Y|yes]${reset} or ${green}[n|no|N]${reset}?"
+    read choice
+
+    case "$choice" in 
+      y|Y|yes|Yes )
+        # set -x
+        echo "Executing."
+        KEY=$(curl -s -k --url "https://${JIRA_URL}/rest/api/2/issue" \
+        --header "Authorization: Bearer ${JIRA_TOKEN}" \
+        --header "Accept: application/json" \
+        --header "Content-Type: application/json" \
+        --data '{
+          "fields":
+            {
+              "project": {"key": "CEP"},
+              "summary": "'"${*}"'",
+              "description": "'"${*}"'",
+              "issuetype": {"id": "6"}, 
+              "labels": ["SRE"]
+            }
+          }' | jq -r '.key')
+        
+        text=$(echo "${*}" | tr " " "-")
+        echo "https://${JIRA_URL}/browse/${KEY}"
+        echo "git commit -m \"${KEY} ${*}\"" | pbcopy
+        sleep 0.5
+        echo "git checkout -b feature/${KEY}-${text}" | pbcopy
+
+        ;;
+      n|N|no ) echo "No cURL call was executed";;
+      * ) echo "invalid";;
+    esac
+  fi
+}
+sn() {(
+    SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
+    cd $HOME/repos/HORIZON/$SOL_FACTORY_PROJECT
+    source tools/venv_solf/bin/activate
+    pip install --index https://${TWINE_USERNAME}:${TWINE_PASSWORD}@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple --upgrade ed-python-utils > /dev/null 2>&1
+    pip install -r tools/requirements.txt > /dev/null 2>&1
+    export RITM=$1
+    python3 -c '''
+from pprint import pprint
+import os
+ritm = os.getenv("RITM")
+from python_utils.service_now.utils import (
+get_sysids, 
+get_sn_tfvariables, 
+sysids_url, 
+sn_payload_url)
+sn_pass = os.getenv("SN_PASS", None)
+sn_pairs = get_sysids(username="horizon.rest", password=sn_pass, url=sysids_url, ritms=[ritm])
+p = get_sn_tfvariables("horizon.rest", sn_pass, sn_payload_url, list(sn_pairs.values())[0])
+values = {}
+[values.update({i["name"]: i["value"]}) for i in p["records"][0]["variables"]]
+pprint(values)
+'''
+)}
+presentation() {
+    if [[ -z "${JIRA_TOKEN}" ]]; then
+        echo "Missing env. variable JIRA_TOKEN"
+    else
+        red=$(tput setaf 1)
+        green=$(tput setaf 2)
+        reset=$(tput sgr0)
+
+        JIRA_BOARD="4136" # Horizon Sprint Board identifier
+        JIRA_CURRENT_SPRINT=$(curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint?state=active" | jq '.values | .[].id')
+        JIRA_CURRENT_SPRINT_GOAL=$(curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint?state=active" | jq -r '.values | .[].goal')
+
+        JIRA_CURRENT_SPRINT_NAME=$(curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint?state=active" | jq -r '.values | .[].name')
+
+        export MAX_ENTRIES="1000"
+
+        echo "${green}Sprint Goal${reset}: ${JIRA_CURRENT_SPRINT_GOAL}"
+        echo "${green}Sprint Name${reset}: ${JIRA_CURRENT_SPRINT_NAME}"
+
+        echo "${green}Stories:${reset}"
+        curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint/${JIRA_CURRENT_SPRINT}/issue?startAt=0&maxResults=${MAX_ENTRIES}" |
+            jq -r '.issues | .[] | select(.fields.issuetype.name=="Story" and .fields.status.statusCategory.name=="Done") |
+          (
+              {
+                "key": ("* " + .key),
+                "summary": (.fields.summary),
+                "assignee": ("[" + .fields.assignee.emailAddress | split(".")[0] + "]")
+              }
+              )' | jq -sr '. |=sort_by(.assignee) | .[] | join(" ")'
+
+        echo "${green}Worth to mention:${reset}"
+        curl -s -k --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${JIRA_TOKEN}" \
+            --request GET --url "https://${JIRA_URL}/rest/agile/1.0/board/${JIRA_BOARD}/sprint/${JIRA_CURRENT_SPRINT}/issue?startAt=0&maxResults=${MAX_ENTRIES}" |
+            jq -r '.issues | .[] | select(.fields.issuetype.name=="Task") |
+          (
+              {
+                "key": ("* " + .key),
+                "summary": (.fields.summary),
+                "assignee": ("[" + .fields.assignee.emailAddress | split(".")[0] + "]")
+              }
+              )' | jq -sr '. |=sort_by(.assignee) | .[] | join(" ")'
+    fi
+
+}
+
+# Personal
+alias 1='ssh server'
+alias 2='ssh server2'
+test() {
+    if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
+        if [[ "$(uname)" == "Darwin" ]]; then
+            (sleep 1 && open -a "Vivaldi" https://localhost:3560) &
+        elif grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
+            (sleep 1 && /mnt/c/Program\ Files\ \(x86\)/Vivaldi/Application/vivaldi.exe https://localhost:3560) &
+        fi
+        hugo serve -p 3560 --tlsAuto --buildFuture
+    fi
+}
