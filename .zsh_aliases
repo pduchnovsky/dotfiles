@@ -10,9 +10,26 @@ git() {
         command git "$@"
     fi
 }
+p() { system_profiler SPPowerDataType | grep -E "Wattage|Amperage|Voltage"; }
 b() {
     default_branch=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
     gco $default_branch && sync
+}
+ba() {
+    original_dir=$(pwd)
+    for i in $(find ~/repos -name '.git' -type d); do
+        cd "$(dirname "$i")" || {
+            echo "[ERROR] $(dirname "$i"): Failed to cd" >&2
+            continue
+        }
+
+        b || echo "[ERROR] $(dirname "$i"): b() failed"
+
+        cd "$original_dir" || {
+            echo "[ERROR] Failed to return to $original_dir" >&2
+            exit 1
+        }
+    done
 }
 dot() {
     url="https://github.com/pduchnovsky/dotfiles"
@@ -59,8 +76,11 @@ brew() {
         /opt/homebrew/bin/brew $@
     fi
 }
-bb() { brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
-bu() { brew upgrade --greedy; }
+bb() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
+bu() {
+    HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew upgrade --greedy
+    cp ~/Documents/pics/vivaldi.icns /Applications/Vivaldi.app/Contents/Resources/app.icns
+}
 br() {
     for pkg in "$@"; do
         if brew info --cask "$pkg" &>/dev/null; then
@@ -185,43 +205,46 @@ push() {
     fi
 }
 task() {
-    # set -x
-    red=$(tput setaf 1)
-    green=$(tput setaf 2)
-    reset=$(tput sgr0)
+  # set -x
+  JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)
+  JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)
 
-    if [[ -z "${JIRA_TOKEN}" ]]; then
-        echo "Missing env. variable JIRA_TOKEN"
-    else
-        CMD=$(echo curl -k --url "https://${JIRA_URL}/rest/api/2/issue" \
-            --header "Authorization: Bearer ${JIRA_TOKEN}" \
-            --header "Accept: application/json" \
-            --header "Content-Type: application/json" \
-            --data '{
+  red=`tput setaf 1`
+  green=`tput setaf 2`
+  reset=`tput sgr0`
+
+  if [[ -z "${JIRA_TOKEN}" ]]; then 
+    echo "Missing env. variable JIRA_TOKEN"
+  else
+    CMD=$(echo curl -k --url "https://${JIRA_URL}/rest/api/latest/issue" \
+      --header "Authorization: Bearer ${JIRA_TOKEN}" \
+      --header "Accept: application/json" \
+      --header "Content-Type: application/json" \
+      --data '{
         "fields":
           {
             "project": {"key": "CEP"},
             "summary": "'"${*}"'",
             "description": "'"${*}"'",
             "issuetype": {"id": "6"}, 
-            "labels": ["SRE"]
+            "labels": ["TEST"],
           }
         }')
+    
+    echo  "$(echo ${CMD} | sed -E 's/Bearer [a-zA-Z0-9]+/Bearer *****/')"
+    echo
+    echo "Would you like to ${green}execute above cURL${reset} call ${red}[y|Y|yes]${reset} or ${green}[n|no|N]${reset}?"
+    read choice
 
-        echo "$(echo ${CMD} | sed -E 's/Bearer [a-zA-Z0-9]+/Bearer *****/')"
-        echo
-        echo "Would you like to ${green}execute above cURL${reset} call ${red}[y|Y|yes]${reset} or ${green}[n|no|N]${reset}?"
-        read choice
-
-        case "$choice" in
-        y | Y | yes | Yes)
-            # set -x
-            echo "Executing."
-            KEY=$(curl -s -k --url "https://${JIRA_URL}/rest/api/2/issue" \
-                --header "Authorization: Bearer ${JIRA_TOKEN}" \
-                --header "Accept: application/json" \
-                --header "Content-Type: application/json" \
-                --data '{
+    case "$choice" in 
+      y|Y|yes|Yes )
+        # set -x
+        echo "Executing."
+        KEY=$(curl -s -k --url "https://${JIRA_URL}/rest/api/2/issue" \
+        --header "Authorization: Bearer ${JIRA_TOKEN}" \
+        --header "Accept: application/json" \
+        --header "Content-Type: application/json" \
+        --data '{
           "fields":
             {
               "project": {"key": "CEP"},
@@ -231,21 +254,18 @@ task() {
               "labels": ["SRE"]
             }
           }' | jq -r '.key')
+        
+        text=$(echo "${*}" | tr " " "-")
+        echo "https://${JIRA_URL}/browse/${KEY}"
+        echo "git commit -m \"${KEY} ${*}\"" | pbcopy
+        sleep 0.5
+        echo "git checkout -b feature/${KEY}-${text}" | pbcopy
 
-            text=$(echo "${*}" | tr " " "-")
-            echo "https://${JIRA_URL}/browse/${KEY}"
-            echo "git checkout -b feature/${KEY}-${text}"
-            echo "git commit -m \"${KEY} ${*}\""
-            echo -e "
-        git checkout -b feature/${KEY}-${text}
-        git commit -m \"${KEY} ${*}\"
-        " | pbcopy
-
-            ;;
-        n | N | no) echo "No cURL call was executed" ;;
-        *) echo "invalid" ;;
-        esac
-    fi
+        ;;
+      n|N|no ) echo "No cURL call was executed";;
+      * ) echo "invalid";;
+    esac
+  fi
 }
 sn() {(
     SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
