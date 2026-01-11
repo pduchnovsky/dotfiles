@@ -70,10 +70,11 @@ fi
 
 tf() { terraform $@; }
 brew() {
-    if ping -c1 -W1 $PROXY_ADDR &>/dev/null; then
-        ALL_PROXY=socks5://$PROXY_ADDR:5678 /opt/homebrew/bin/brew $@
+    local brew_bin="$HOMEBREW_PREFIX/bin/brew"
+    if ping -c1 -W1 "$PROXY_ADDR" &>/dev/null; then
+        ALL_PROXY="socks5://$PROXY_ADDR:5678" "$brew_bin" "$@"
     else
-        /opt/homebrew/bin/brew $@
+        "$brew_bin" "$@"
     fi
 }
 bb() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
