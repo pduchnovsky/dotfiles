@@ -58,6 +58,8 @@ if [ "$(uname)" = "Darwin" ]; then
     export TWINE_USERNAME=$(fgp TWINE_USERNAME)       # xxxxxx-xxxxxxx-xxxxx
     export TWINE_PASSWORD=$(fgp TWINE_PASSWORD)       # xxxxxxxxxxxxxxx
 
+    export PIP_EXTRA_INDEX_URL="https://${TWINE_USERNAME}:${TWINE_PASSWORD}@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple"
+
     # SSH via PATH
     sshviapath() { ssh $USER@$1@$2.$LAN_ADDR@ssh.$PATH_ADDR; }
     alias tffat1='sshviapath ad_alice terraboxatf1'
@@ -67,10 +69,6 @@ if [ "$(uname)" = "Darwin" ]; then
     alias ibis1='sshviapath '$USER' ibis1'
     alias ibis2='sshviapath '$USER' ibis2'
 fi
-
-# pip creds and index
-printf "machine repo.%s\n  login %s\n  password %s\n" "$LAN_ADDR" "$TWINE_USERNAME" "$TWINE_PASSWORD" > ~/.netrc && chmod 600 ~/.netrc
-pip config set global.extra-index-url "https://repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple"
 
 # rest
 tf() { terraform $@; }
@@ -277,7 +275,6 @@ sn() {(
     SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
     cd $HOME/repos/HORIZON/$SOL_FACTORY_PROJECT
     source tools/venv_solf/bin/activate
-    pip install --index https://${TWINE_USERNAME}:${TWINE_PASSWORD}@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple --upgrade ed-python-utils > /dev/null 2>&1
     pip install -r tools/requirements.txt > /dev/null 2>&1
     export RITM=$1
     python3 -c '''
