@@ -68,6 +68,11 @@ if [ "$(uname)" = "Darwin" ]; then
     alias ibis2='sshviapath '$USER' ibis2'
 fi
 
+# pip creds and index
+printf "machine repo.%s\n  login %s\n  password %s\n" "$LAN_ADDR" "$TWINE_USERNAME" "$TWINE_PASSWORD" > ~/.netrc && chmod 600 ~/.netrc
+pip config set global.extra-index-url "https://repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple"
+
+# rest
 tf() { terraform $@; }
 brew() {
     local brew_bin="$HOMEBREW_PREFIX/bin/brew"
