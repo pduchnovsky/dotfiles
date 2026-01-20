@@ -55,10 +55,8 @@ if [ "$(uname)" = "Darwin" ]; then
     export CORP_DOMAIN=$(fgp CORP_DOMAIN)             # x-xxx.xxx
     export BITBUCKET_TOKEN=$(fgp BITBUCKET_TOKEN)     # xxxxxxxxxxxxxxx
     export BITBUCKET_ADDRESS=$(fgp BITBUCKET_ADDRESS) # xxxxxx.x-xxx.xxx
-    export TWINE_USERNAME=$(fgp TWINE_USERNAME)       # xxxxxx-xxxxxxx-xxxxx
-    export TWINE_PASSWORD=$(fgp TWINE_PASSWORD)       # xxxxxxxxxxxxxxx
 
-    export PIP_EXTRA_INDEX_URL="https://${TWINE_USERNAME}:${TWINE_PASSWORD}@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple"
+    export PIP_EXTRA_INDEX_URL="https://$(fgp TWINE_USERNAME):$(fgp TWINE_PASSWORD)@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple"
 
     # SSH via PATH
     sshviapath() { ssh $USER@$1@$2.$LAN_ADDR@ssh.$PATH_ADDR; }
@@ -70,7 +68,6 @@ if [ "$(uname)" = "Darwin" ]; then
     alias ibis2='sshviapath '$USER' ibis2'
 fi
 
-# rest
 tf() { terraform $@; }
 brew() {
     local brew_bin="$HOMEBREW_PREFIX/bin/brew"
