@@ -197,12 +197,20 @@ push() {
     if [[ $# -eq 0 ]]; then
         read -p "Commit description: " desc
     else
-        desc="$@"
+        desc="$*"
+    fi
+    noverify=
+    if [[ "$desc" == -nv\ * ]]; then
+        noverify="--no-verify"
+        desc="${desc#-nv }"
+    elif [[ "$desc" == *\ -nv ]]; then
+        noverify="--no-verify"
+        desc="${desc% -nv}"
     fi
     if [ "$(pwd)" = "$HOME" ]; then
-        cfg commit -a --allow-empty-message -m "$desc" && cfg push
+        cfg commit -a --allow-empty-message $noverify -m "$desc" && cfg push $noverify
     else
-        git add . && git add . && git commit -a --allow-empty-message -m "$desc" && git push
+        git add . && git commit -a --allow-empty-message $noverify -m "$desc" && git push $noverify
     fi
 }
 task() {
@@ -258,9 +266,9 @@ task() {
         
         text=$(echo "${*}" | tr " " "-")
         echo "https://${JIRA_URL}/browse/${KEY}"
-        echo "git commit -m \"${KEY} ${*}\"" | pbcopy
+        echo "git checkout -b feature/${KEY}-${text}" #| pbcopy
         sleep 0.5
-        echo "git checkout -b feature/${KEY}-${text}" | pbcopy
+        echo "push \"${KEY} ${*}\"" #| pbcopy
 
         ;;
       n|N|no ) echo "No cURL call was executed";;
