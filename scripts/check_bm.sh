@@ -1,4 +1,14 @@
 #!/bin/bash
+
+# Required parameters:
+# @raycast.schemaVersion 1
+# @raycast.title check bettermouse
+# @raycast.mode silent
+
+# Optional parameters:
+# @raycast.icon 🤖
+# @raycast.packageName check
+
 # 1. Get the unique Identifier for the established NoMachine connection
 # This looks for the "NAME" column in lsof which contains the local->remote IP mapping
 CURRENT_CONN=$(lsof -a -c nxnode -i :4000 | grep "ESTABLISHED" | awk "{print \$2}" | head -n 1)

@@ -283,17 +283,18 @@ sn() {(
     pip install -r tools/requirements.txt > /dev/null 2>&1
     export RITM=$1
     python3 -c '''
-from pprint import pprint
 import os
+from pprint import pprint
 ritm = os.getenv("RITM")
 from python_utils.service_now.utils import (
-get_sysids, 
-get_sn_tfvariables, 
-sysids_url, 
-sn_payload_url)
+  get_sysids, 
+  get_sn_tfvariables
+  )
+autom_url = "https://api.automation.erste-group.net"
 sn_pass = os.getenv("SN_PASS", None)
-sn_pairs = get_sysids(username="horizon.rest", password=sn_pass, url=sysids_url, ritms=[ritm])
-p = get_sn_tfvariables("horizon.rest", sn_pass, sn_payload_url, list(sn_pairs.values())[0])
+sn_pairs = get_sysids(username="horizon.rest", password=sn_pass, autom_url=autom_url, ritms=[ritm])
+# print(sn_pairs)
+p = get_sn_tfvariables("horizon.rest", sn_pass, autom_url, list(sn_pairs.values())[0])
 values = {}
 [values.update({i["name"]: i["value"]}) for i in p["records"][0]["variables"]]
 pprint(values)
