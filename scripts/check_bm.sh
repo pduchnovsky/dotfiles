@@ -24,7 +24,7 @@ if [ -n "$CURRENT_CONN" ]; then
     # 4. Compare: If the current ID is different from the last one, it is a NEW session
     if [ "$CURRENT_CONN" != "$LAST_CONN" ]; then
         killall BetterMouse
-        sleep 2
+        sleep 5
         open -a BetterMouse
         
         # Save the new ID so we dont restart again for this same session

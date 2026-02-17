@@ -42,6 +42,7 @@ dot() {
     fi
 }
 if [ "$(uname)" = "Darwin" ]; then
+    # security add-generic-password -a $USER -s xxxxx -w 'xxxxx' -U
     fgp() { security find-generic-password -a $USER -s $1 -w; }
     alias sed='gsed'
 
@@ -119,7 +120,7 @@ fr() {
         clonerepo sol
         ;;
     '')
-        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON"
+        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON VAULT"
         clonerepo
         ;;
     *)
