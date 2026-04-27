@@ -2,9 +2,14 @@ export HISTIGNORE="*security add-generic-password*"
 alias s='source ~/.zshrc'
 alias cd="z"
 alias lzg='lazygit'
+alias c='copilot'
 cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
 git() {
-    if [ "$(pwd)" = "$HOME" ]; then
+    if [[ -n "$HOMEBREW_PREFIX" ]] || [[ -n "$HOMEBREW_REPOSITORY" ]]; then
+        command git "$@"
+        return
+    fi
+    if [[ "$PWD" == "$HOME" ]]; then
         cfg "$@"
     else
         command git "$@"
@@ -51,20 +56,26 @@ if [ "$(uname)" = "Darwin" ]; then
     export PATH_ADDR=$(fgp PATH_ADDR)                 # xxx.xx-xx.xxx
     export PROXY_ADDR=$(fgp PROXY_ADDR)               # x.x.x.x
     export SN_PASS=$(fgp SN_PASS)                     # xxxxxxxxxxxxxxx
+    export SN_PASS_FAT=$(fgp SN_PASS_FAT)             # xxxxxxxxxxxxxxx
     export JIRA_URL=$(fgp JIRA_URL)                   # xxxx.x-xxx.xxx
     export JIRA_TOKEN=$(fgp JIRA_TOKEN)               # xxxxxxxxxxxxxxx
+    export CONFLUENCE_TOKEN=$(fgp CONFLUENCE_TOKEN)   # xxxxxxxxxxxxxxx
     export CORP_DOMAIN=$(fgp CORP_DOMAIN)             # x-xxx.xxx
     export BITBUCKET_TOKEN=$(fgp BITBUCKET_TOKEN)     # xxxxxxxxxxxxxxx
     export BITBUCKET_ADDRESS=$(fgp BITBUCKET_ADDRESS) # xxxxxx.x-xxx.xxx
+    export TFE_FAT_TOKEN=$(fgp TFE_FAT_TOKEN)         # xxxxxxxxxxxxxxx
+    export TFE_PROD_TOKEN=$(fgp TFE_PROD_TOKEN)       # xxxxxxxxxxxxxxx
+    export EBHUGHE_TOKEN=$(fgp EBHUGHE_TOKEN)                 # xxxxxxxxxxxxxxx
 
     export PIP_EXTRA_INDEX_URL="https://$(fgp TWINE_USERNAME):$(fgp TWINE_PASSWORD)@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple"
 
     # SSH via PATH
     sshviapath() { ssh $USER@$1@$2.$LAN_ADDR@ssh.$PATH_ADDR; }
-    alias tffat1='sshviapath ad_alice terraboxatf1'
-    alias tffat2='sshviapath ad_alice terraboxatf2'
-    alias tfprod1='sshviapath ad_alice terraboxatp1'
-    alias tfprod2='sshviapath ad_alice terraboxatp2'
+    alias tffat1='sshviapath ad_terra iastfef1'
+    alias tffat2='sshviapath ad_terra iastfef2'
+    alias tfprod1='sshviapath ad_terra iastfep1'
+    alias tfprod2='sshviapath ad_terra iastfep2'
+    alias tfdev='sshviapath ad_terra iastfed1'
     alias ibis1='sshviapath '$USER' ibis1'
     alias ibis2='sshviapath '$USER' ibis2'
 fi
@@ -120,7 +131,7 @@ fr() {
         clonerepo sol
         ;;
     '')
-        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON VAULT"
+        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON VAULT TERRAFORM-SERVICE"
         clonerepo
         ;;
     *)
@@ -277,6 +288,7 @@ task() {
     esac
   fi
 }
+# https://api.automation.fat.erste-group.net/fat
 sn() {(
     SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
     cd $HOME/repos/HORIZON/$SOL_FACTORY_PROJECT
