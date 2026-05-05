@@ -39,6 +39,7 @@ brew "warrensbox/tap/tfswitch", link: false
 cask "alt-tab"
 cask "betterdisplay"
 cask "bettermouse"
+cask "copilot-cli"
 cask "font-meslo-for-powerlevel10k"
 cask "hiddenbar"
 cask "hyperkey"
