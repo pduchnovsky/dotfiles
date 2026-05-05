@@ -120,6 +120,11 @@ if [ "$(uname)" = "Darwin" ]; then
 else
     eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
+
+# zsh-autocomplete tuning: avoid menu popups on single-letter input.
+zstyle ':autocomplete:*' min-input 2
+zstyle ':autocomplete:*' delay 0.2
+
 source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
 source $HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source $HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

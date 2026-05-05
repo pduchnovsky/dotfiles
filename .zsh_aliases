@@ -287,30 +287,54 @@ task() {
     esac
   fi
 }
-# https://api.automation.fat.$CORP_DOMAIN_LONG/fat
 sn() {(
     SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
-    cd $HOME/repos/HORIZON/$SOL_FACTORY_PROJECT
+    cd "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT" || return 1
     source tools/venv_solf/bin/activate
     pip install -r tools/requirements.txt > /dev/null 2>&1
-    export RITM=$1
-    python3 -c '''
+
+    local SN_ENV="prod"
+    local RITM_ARG
+
+    if [[ "$1" == "fat" ]]; then
+        SN_ENV="fat"
+        RITM_ARG="$2"
+    else
+        RITM_ARG="$1"
+    fi
+
+    if [[ -z "$RITM_ARG" ]]; then
+        echo "Usage: sn [fat] <RITM>"
+        return 1
+    fi
+
+    export RITM="$RITM_ARG"
+    export SN_ENV
+
+    python3 - <<'PY'
 import os
 from pprint import pprint
+from python_utils.service_now.utils import get_sysids, get_sn_tfvariables
+
 ritm = os.getenv("RITM")
-from python_utils.service_now.utils import (
-  get_sysids, 
-  get_sn_tfvariables
-  )
-autom_url = "https://api.automation." + os.getenv("CORP_DOMAIN_LONG")
-sn_pass = os.getenv("SN_PASS", None)
-sn_pairs = get_sysids(username="horizon.rest", password=sn_pass, autom_url=autom_url, ritms=[ritm])
-# print(sn_pairs)
+sn_env = os.getenv("SN_ENV", "prod")
+
+base_url = "https://api.automation." + (".fat." if sn_env == "fat" else "") + os.getenv("CORP_DOMAIN_LONG")
+autom_url = base_url + ("/fat" if sn_env == "fat" else "")
+
+sn_pass = os.getenv("SN_PASS")
+sn_pairs = get_sysids(
+    username="horizon.rest",
+    password=sn_pass,
+    autom_url=autom_url,
+    ritms=[ritm],
+)
+
 p = get_sn_tfvariables("horizon.rest", sn_pass, autom_url, list(sn_pairs.values())[0])
 values = {}
 [values.update({i["name"]: i["value"]}) for i in p["records"][0]["variables"]]
 pprint(values)
-'''
+PY
 )}
 presentation() {
     if [[ -z "${JIRA_TOKEN}" ]]; then
