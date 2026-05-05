@@ -5,15 +5,13 @@ alias lzg='lazygit'
 alias c='copilot'
 cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
 git() {
-    if [[ -n "$HOMEBREW_PREFIX" ]] || [[ -n "$HOMEBREW_REPOSITORY" ]]; then
-        command git "$@"
-        return
+    if [[ "$PWD" == "$HOME" ]] && [[ ! -d ".git" ]]; then
+        if [[ $(ps -p $PPID -o comm= 2>/dev/null) != *"brew"* ]]; then
+             command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"
+             return
+        fi
     fi
-    if [[ "$PWD" == "$HOME" ]]; then
-        cfg "$@"
-    else
-        command git "$@"
-    fi
+    command git "$@"
 }
 p() { system_profiler SPPowerDataType | grep -E "Wattage|Amperage|Voltage"; }
 b() {
@@ -61,6 +59,7 @@ if [ "$(uname)" = "Darwin" ]; then
     export JIRA_TOKEN=$(fgp JIRA_TOKEN)               # xxxxxxxxxxxxxxx
     export CONFLUENCE_TOKEN=$(fgp CONFLUENCE_TOKEN)   # xxxxxxxxxxxxxxx
     export CORP_DOMAIN=$(fgp CORP_DOMAIN)             # x-xxx.xxx
+    export CORP_DOMAIN_LONG=$(fgp CORP_DOMAIN_LONG)   # xxxxx-xxxxx.xxx
     export BITBUCKET_TOKEN=$(fgp BITBUCKET_TOKEN)     # xxxxxxxxxxxxxxx
     export BITBUCKET_ADDRESS=$(fgp BITBUCKET_ADDRESS) # xxxxxx.x-xxx.xxx
     export TFE_FAT_TOKEN=$(fgp TFE_FAT_TOKEN)         # xxxxxxxxxxxxxxx
@@ -288,7 +287,7 @@ task() {
     esac
   fi
 }
-# https://api.automation.fat.erste-group.net/fat
+# https://api.automation.fat.$CORP_DOMAIN_LONG/fat
 sn() {(
     SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
     cd $HOME/repos/HORIZON/$SOL_FACTORY_PROJECT
@@ -303,7 +302,7 @@ from python_utils.service_now.utils import (
   get_sysids, 
   get_sn_tfvariables
   )
-autom_url = "https://api.automation.erste-group.net"
+autom_url = "https://api.automation." + os.getenv("CORP_DOMAIN_LONG")
 sn_pass = os.getenv("SN_PASS", None)
 sn_pairs = get_sysids(username="horizon.rest", password=sn_pass, autom_url=autom_url, ritms=[ritm])
 # print(sn_pairs)
