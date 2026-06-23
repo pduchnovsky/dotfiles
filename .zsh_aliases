@@ -130,7 +130,7 @@ fr() {
         clonerepo sol
         ;;
     '')
-        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON VAULT TERRAFORM-SERVICE"
+        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON VAULT TERRAFORM-SERVICE TFE-GCP-DATABASES"
         clonerepo
         ;;
     *)
@@ -389,6 +389,7 @@ presentation() {
     fi
 
 }
+alias nxrestart="sudo /etc/NX/nxserver --restart"
 
 # Personal
 alias 1='ssh server'
