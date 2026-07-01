@@ -13,7 +13,7 @@
 
 # 1. Check if a NoMachine connection is actually established
 # We look for established network connections on the NX port (default 4000)
-NX_CONNECTED=$(netstat -atn | grep ESTABLISHED | grep ".4000")
+NX_CONNECTED=$(netstat -atn | grep ESTABLISHED | grep "\.4000")
 
 # 2. Check if BetterMouse is running
 BM_RUNNING=$(pgrep -x "BetterMouse")

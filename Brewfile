@@ -10,8 +10,6 @@ brew "bat"
 brew "certifi"
 # Command-line fuzzy finder written in Go
 brew "fzf"
-# GitHub command-line tool
-brew "gh"
 # GNU implementation of the famous stream editor
 brew "gnu-sed"
 # Improved top (interactive process viewer)
@@ -22,16 +20,10 @@ brew "hugo"
 brew "jq"
 # User-friendly front-end to ssh-agent(1)
 brew "keychain"
-# Simple terminal UI for git commands
-brew "lazygit"
 # MCP server for Atlassian tools (Confluence, Jira)
 brew "mcp-atlassian"
 # 'traceroute' and 'ping' in a single tool
 brew "mtr"
-# Open-source, cross-platform JavaScript runtime environment
-brew "node"
-# PNG file optimizer
-brew "optipng"
 # Theme for zsh
 brew "powerlevel10k"
 # Framework for managing multi-language pre-commit hooks
@@ -40,18 +32,12 @@ brew "pre-commit"
 brew "python@3.12"
 # Search tool like grep and The Silver Searcher
 brew "ripgrep"
-# Autoformat shell script source code
-brew "shfmt"
-# Version control system designed to be a better CVS
-brew "subversion"
 # MCP server for Terraform
 brew "terraform-mcp-server"
 # Linter for Terraform files
 brew "tflint"
 # Display directories as trees (with optional color/HTML output)
 brew "tree"
-# Extremely fast Python package installer and resolver, written in Rust
-brew "uv"
 # Internet file retriever
 brew "wget"
 # Process YAML, JSON, XML, CSV and properties documents from the CLI
@@ -73,17 +59,11 @@ brew "warrensbox/tap/tfswitch", link: false
 cask "betterdisplay"
 # Utility improving 3rd party mouse performance and functionalities
 cask "bettermouse"
-# Brings the power of Copilot coding agent directly to your terminal
-cask "copilot-cli"
 # Window peeking utility app
 cask "dockdoor"
 cask "font-meslo-for-powerlevel10k"
 # Utility to hide menu bar items
 cask "hiddenbar"
-# File archiver
-cask "keka"
-# Utility to extend trackpad functionality
-cask "middleclick"
 # Remote desktop software
 cask "nomachine"
 # Utility to uninstall apps and remove leftover files from old/uninstalled apps
