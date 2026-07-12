@@ -24,6 +24,8 @@ brew "keychain"
 brew "mcp-atlassian"
 # 'traceroute' and 'ping' in a single tool
 brew "mtr"
+# Open-source, cross-platform JavaScript runtime environment
+brew "node"
 # Theme for zsh
 brew "powerlevel10k"
 # Framework for managing multi-language pre-commit hooks
@@ -62,8 +64,6 @@ cask "bettermouse"
 # Window peeking utility app
 cask "dockdoor"
 cask "font-meslo-for-powerlevel10k"
-# Utility to hide menu bar items
-cask "hiddenbar"
 # Remote desktop software
 cask "nomachine"
 # Utility to uninstall apps and remove leftover files from old/uninstalled apps
@@ -76,5 +76,7 @@ cask "sentinel"
 cask "shottr"
 # The tfswitch command lets you switch between terraform versions.
 cask "warrensbox/tap/tfswitch"
+# Menu bar manager
+cask "thaw"
 # Web browser with built-in email client focusing on customization and control
 cask "vivaldi"
