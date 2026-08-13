@@ -9,24 +9,18 @@
 # @raycast.icon 🤖
 # @raycast.packageName routes
 
-s="10.10.10.2"
-sudo route delete "$s" 2>/dev/null
-sleep 1
-if netstat -nr -f inet | grep '^default' | grep -qE 'tun|utun'; then
-    chosen_iface=$(ifconfig -a | awk '
-        /^[a-z0-9]+:/ {iface=$1; sub(":", "", iface); is_active=0; has_ip=0}
-        /status: active/ {is_active=1}
-        /inet 10\.10\.10/ {has_ip=1}
-        is_active && has_ip {
-            if (iface == "en10") { prioritized_iface = "en10" }
-            else if (iface == "en0") { non_prioritized_iface = "en0" }
-        }
-        END {
-            if (prioritized_iface) { print prioritized_iface }
-            else if (non_prioritized_iface) { print non_prioritized_iface }
-        }
-    ')
-    if [ -n "$chosen_iface" ]; then
-        sudo route add -host "$s" -interface "$chosen_iface"
+target_host="10.10.10.2"
+
+# Avoid hanging under launchd if sudo needs interaction.
+#/usr/bin/sudo -n true >/dev/null 2>&1 || exit 0
+
+/usr/bin/sudo -n /sbin/route -n delete -host "$target_host" >/dev/null 2>&1 || true
+
+if /usr/sbin/netstat -nr -f inet | /usr/bin/awk '$1 == "default" && $4 ~ /^(tun|utun)/ { found = 1 } END { exit found ? 0 : 1 }'; then
+  for iface in en10 en0; do
+    if /sbin/ifconfig "$iface" 2>/dev/null | /usr/bin/awk '/status: active/ { active = 1 } /inet 10\.10\.10\./ { ip = 1 } END { exit !(active && ip) }'; then
+      /usr/bin/sudo -n /sbin/route -n add -host "$target_host" -interface "$iface" >/dev/null
+      break
     fi
+  done
 fi

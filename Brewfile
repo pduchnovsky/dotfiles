@@ -2,6 +2,8 @@ tap "hashicorp/tap", trusted: true
 tap "homebrew/bundle"
 tap "natesales/repo", "https://github.com/natesales/repo", trusted: true
 tap "warrensbox/tap", trusted: true
+# Official Amazon AWS command-line interface
+brew "awscli"
 # Bourne-Again SHell, a UNIX command interpreter
 brew "bash"
 # Clone of cat(1) with syntax highlighting and Git integration
@@ -10,12 +12,12 @@ brew "bat"
 brew "certifi"
 # Command-line fuzzy finder written in Go
 brew "fzf"
+# GitHub command-line tool
+brew "gh"
 # GNU implementation of the famous stream editor
 brew "gnu-sed"
 # Improved top (interactive process viewer)
 brew "htop"
-# Configurable static site generator
-brew "hugo"
 # Lightweight and flexible command-line JSON processor
 brew "jq"
 # User-friendly front-end to ssh-agent(1)
@@ -57,15 +59,13 @@ brew "hashicorp/tap/vault"
 brew "natesales/repo/q"
 # The tfswitch command lets you switch between terraform versions.
 brew "warrensbox/tap/tfswitch", link: false
-# Display management tool
-cask "betterdisplay"
 # Utility improving 3rd party mouse performance and functionalities
 cask "bettermouse"
 # Window peeking utility app
 cask "dockdoor"
 cask "font-meslo-for-powerlevel10k"
-# Remote desktop software
-cask "nomachine"
+# Utility to extend trackpad functionality
+cask "middleclick"
 # Utility to uninstall apps and remove leftover files from old/uninstalled apps
 cask "pearcleaner"
 # Control your tools with a few keystrokes
@@ -75,8 +75,6 @@ cask "sentinel"
 # Screenshot measurement and annotation tool
 cask "shottr"
 # The tfswitch command lets you switch between terraform versions.
-cask "warrensbox/tap/tfswitch"
-# Menu bar manager
-cask "thaw"
+cask "warrensbox/tap/tfswitch", trusted: true
 # Web browser with built-in email client focusing on customization and control
 cask "vivaldi"

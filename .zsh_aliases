@@ -34,6 +34,39 @@ ba() {
         }
     done
 }
+secret() {
+    local action="$1"
+    local name="$2"
+    local value="$3"
+
+    case "$action" in
+        set|add)
+            if [ -z "$name" ] || [ -z "$value" ]; then
+                echo "Usage: secret set <name> <value>"
+                return 1
+            fi
+            security add-generic-password -U -a "$USER" -s "$name" -w "$value"
+            ;;
+        get)
+            if [ -z "$name" ]; then
+                echo "Usage: secret get <name>"
+                return 1
+            fi
+            security find-generic-password -a "$USER" -s "$name" -w
+            ;;
+        delete|del|rm)
+            if [ -z "$name" ]; then
+                echo "Usage: secret delete <name>"
+                return 1
+            fi
+            security delete-generic-password -a "$USER" -s "$name"
+            ;;
+        *)
+            echo "Usage: secret <set|get|delete> <name> [value]"
+            return 1
+            ;;
+    esac
+}
 dot() {
     url="https://github.com/pduchnovsky/dotfiles"
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -130,7 +163,7 @@ fr() {
         clonerepo sol
         ;;
     '')
-        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON VAULT TERRAFORM-SERVICE TFE-GCP-DATABASES"
+        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON CS-HORIZON VAULT TERRAFORM-SERVICE TFE-GCP-DATABASES TFE-TFE-MODULES onecloud-aws"
         clonerepo
         ;;
     *)
@@ -221,7 +254,7 @@ push() {
     if [ "$(pwd)" = "$HOME" ]; then
         cfg commit -a --allow-empty-message $noverify -m "$desc" && cfg push $noverify
     else
-        git add . && git commit -a --allow-empty-message $noverify -m "$desc" && git push $noverify
+        git add -A && git commit -a --allow-empty-message $noverify -m "$desc" && git push $noverify
     fi
 }
 task() {
