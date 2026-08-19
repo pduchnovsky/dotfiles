@@ -1,8 +1,6 @@
 export HISTIGNORE="*security add-generic-password*"
 alias s='source ~/.zshrc'
 alias cd="z"
-alias lzg='lazygit'
-alias c='copilot'
 cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
 git() {
     if [[ "$PWD" == "$HOME" ]] && [[ ! -d ".git" ]]; then
@@ -149,6 +147,7 @@ fr() {
         TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
             xargs -P10 -n1 curl -ks -u "${USER}:$BITBUCKET_TOKEN" |
             jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
+        [[ -z "$TARGET" ]] && return 130
         [[ ! -d "$HOME/repos/${OPT}${TARGET}" ]] && command git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$HOME/repos/${OPT}${TARGET}"
         cd "$HOME/repos/${OPT}${TARGET}"
     }
@@ -158,7 +157,7 @@ fr() {
         [[ ! -d "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT" ]] &&
             git clone "ssh://git@$BITBUCKET_ADDRESS:7999/HORIZON/$SOL_FACTORY_PROJECT.git" "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT"
         PROJECTS=$(find "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT/organization" -type f -name '*.yaml' -print0 |
-            xargs -0 -I % sh -c 'yq -o json "%" | jq -r .vcs_project' |
+            xargs -0 -n1 yq -r '.vcs_project' |
             tr '[:lower:]' '[:upper:]' | sort -u | grep -v NULL | xargs)
         clonerepo sol
         ;;
