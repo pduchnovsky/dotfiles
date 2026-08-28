@@ -15,14 +15,8 @@ brew "gnu-sed"
 brew "jq"
 # User-friendly front-end to ssh-agent(1)
 brew "keychain"
-# MCP server for Atlassian tools (Confluence, Jira)
-brew "mcp-atlassian"
-# Open-source, cross-platform JavaScript runtime environment
-brew "node"
 # Theme for zsh
 brew "powerlevel10k"
-# MCP server for Terraform
-brew "terraform-mcp-server"
 # Process YAML, JSON, XML, CSV and properties documents from the CLI
 brew "yq"
 # Shell extension to navigate your filesystem faster
@@ -37,8 +31,6 @@ brew "zsh-syntax-highlighting"
 brew "hashicorp/tap/vault"
 # The tfswitch command lets you switch between terraform versions.
 brew "warrensbox/tap/tfswitch", link: false
-# Utility improving 3rd party mouse performance and functionalities
-cask "bettermouse"
 # Window peeking utility app
 cask "dockdoor"
 cask "font-meslo-for-powerlevel10k"
@@ -46,10 +38,10 @@ cask "font-meslo-for-powerlevel10k"
 cask "middleclick"
 # Control your tools with a few keystrokes
 cask "raycast"
+# Tool to reverse the direction of scrolling
+cask "scroll-reverser"
 # Language and framework for policy as code
 cask "sentinel"
-# Screenshot measurement and annotation tool
-cask "shottr"
 # The tfswitch command lets you switch between terraform versions.
 cask "warrensbox/tap/tfswitch", trusted: true
 # Web browser with built-in email client focusing on customization and control

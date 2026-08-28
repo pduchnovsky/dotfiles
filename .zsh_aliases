@@ -2,6 +2,27 @@ export HISTIGNORE="*security add-generic-password*"
 alias s='source ~/.zshrc'
 alias cd="z"
 cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
+unalias l 2>/dev/null
+l() {
+    local remote_branch branch
+
+    command git fetch --prune origin || return 1
+    remote_branch=$(command git for-each-ref --format='%(refname:short)' --sort=-committerdate refs/remotes/origin |
+        sed '/^origin\/HEAD$/d' |
+        head -n1)
+
+    if [[ -z "$remote_branch" ]]; then
+        echo "No remote branches found on origin." >&2
+        return 1
+    fi
+
+    branch="${remote_branch#origin/}"
+    if command git show-ref --verify --quiet "refs/heads/$branch"; then
+        command git switch "$branch"
+    else
+        command git switch --track -c "$branch" "$remote_branch"
+    fi
+}
 git() {
     if [[ "$PWD" == "$HOME" ]] && [[ ! -d ".git" ]]; then
         if [[ $(ps -p $PPID -o comm= 2>/dev/null) != *"brew"* ]]; then
@@ -114,7 +135,7 @@ tf() { terraform $@; }
 brew() {
     local brew_bin="$HOMEBREW_PREFIX/bin/brew"
     if ping -c1 -W1 "$PROXY_ADDR" &>/dev/null; then
-        ALL_PROXY="socks5://$PROXY_ADDR:5678" "$brew_bin" "$@"
+        ALL_PROXY="socks5://$PROXY_ADDR:80" "$brew_bin" "$@"
     else
         "$brew_bin" "$@"
     fi
@@ -134,11 +155,32 @@ br() {
     done
 }
 ggo() {
-    open $(git remote get-url origin | awk -F'[:@/]' '{sub(/\.git$/, "", $8); print "https://"$5"/projects/"$7"/repos/"$8}')
+    local remote_url repo_path project repo web_url
+    remote_url=$(git remote get-url origin) || return 1
+
+    case "$remote_url" in
+    https://*.ghe.com/*|http://*.ghe.com/*)
+        web_url="${remote_url%.git}"
+        ;;
+    ssh://git@stash.s-mxs.net:7999/*/*)
+        repo_path="${remote_url#ssh://git@stash.s-mxs.net:7999/}"
+        repo_path="${repo_path%.git}"
+        project="${repo_path%%/*}"
+        repo="${repo_path#*/}"
+        web_url="https://stash.s-mxs.net/projects/${project}/repos/${repo}/browse"
+        ;;
+    *)
+        echo "Unsupported origin URL: $remote_url" >&2
+        return 1
+        ;;
+    esac
+
+    open "$web_url"
 }
 fr() {
     clonerepo() {
-        OPT=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
+        local opt project repo target_dir
+        opt=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
         PROJECTS_ARRAY=()
         read -a projects_array <<<"$PROJECTS" 2>/dev/null || read -A projects_array <<<"$PROJECTS"
         for project in "${projects_array[@]}"; do
@@ -148,8 +190,20 @@ fr() {
             xargs -P10 -n1 curl -ks -u "${USER}:$BITBUCKET_TOKEN" |
             jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
         [[ -z "$TARGET" ]] && return 130
-        [[ ! -d "$HOME/repos/${OPT}${TARGET}" ]] && command git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$HOME/repos/${OPT}${TARGET}"
-        cd "$HOME/repos/${OPT}${TARGET}"
+
+        project="${TARGET%%/*}"
+        repo="${TARGET#*/}"
+        target_dir="$HOME/repos/${opt}${TARGET}"
+
+        if [[ "$project" == "HORIZON" ]]; then
+            case "${(L)repo}" in
+            *aws*) target_dir="$HOME/repos/HORIZON/AWS/$repo" ;;
+            *gcp*) target_dir="$HOME/repos/HORIZON/GCP/$repo" ;;
+            esac
+        fi
+
+        [[ ! -d "$target_dir" ]] && command git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$target_dir"
+        cd "$target_dir"
     }
     case "$1" in
     sol)
@@ -162,7 +216,7 @@ fr() {
         clonerepo sol
         ;;
     '')
-        PROJECTS="HORIZON TFE-GCP-MODULES CS-ATRON CS-HORIZON VAULT TERRAFORM-SERVICE TFE-GCP-DATABASES TFE-TFE-MODULES onecloud-aws"
+        PROJECTS="HORIZON TFE-GCP-MODULES TFE-AWS-MODULES CS-ATRON CS-HORIZON VAULT TERRAFORM-SERVICE TFE-GCP-DATABASES TFE-TFE-MODULES onecloud-aws"
         clonerepo
         ;;
     *)
@@ -321,7 +375,7 @@ task() {
 }
 sn() {(
     SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
-    cd "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT" || return 1
+    cd "$HOME/repos/HORIZON/GCP/$SOL_FACTORY_PROJECT" || return 1
     source tools/venv_solf/bin/activate
     pip install -r tools/requirements.txt > /dev/null 2>&1
 
