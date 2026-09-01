@@ -5,12 +5,16 @@ tap "warrensbox/tap", trusted: true
 brew "awscli"
 # Mozilla CA bundle for Python
 brew "certifi"
+# Pack, ship and run any application as a lightweight container
+brew "docker"
 # Command-line fuzzy finder written in Go
 brew "fzf"
 # GitHub command-line tool
 brew "gh"
 # GNU implementation of the famous stream editor
 brew "gnu-sed"
+# Interactive computing in Python
+brew "ipython"
 # Lightweight and flexible command-line JSON processor
 brew "jq"
 # User-friendly front-end to ssh-agent(1)

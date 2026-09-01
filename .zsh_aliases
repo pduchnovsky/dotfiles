@@ -122,11 +122,6 @@ if [ "$(uname)" = "Darwin" ]; then
 
     # SSH via PATH
     sshviapath() { ssh $USER@$1@$2.$LAN_ADDR@ssh.$PATH_ADDR; }
-    alias tffat1='sshviapath ad_terra iastfef1'
-    alias tffat2='sshviapath ad_terra iastfef2'
-    alias tfprod1='sshviapath ad_terra iastfep1'
-    alias tfprod2='sshviapath ad_terra iastfep2'
-    alias tfdev='sshviapath ad_terra iastfed1'
     alias ibis1='sshviapath '$USER' ibis1'
     alias ibis2='sshviapath '$USER' ibis2'
 fi
