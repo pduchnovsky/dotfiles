@@ -121,11 +121,6 @@ else
     eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
-# zsh-autocomplete tuning: avoid menu popups on single-letter input.
-zstyle ':autocomplete:*' min-input 2
-zstyle ':autocomplete:*' delay 0.2
-
-source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
 source $HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source $HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 source $HOMEBREW_PREFIX/share/powerlevel10k/powerlevel10k.zsh-theme
@@ -134,11 +129,21 @@ source $HOMEBREW_PREFIX/share/powerlevel10k/powerlevel10k.zsh-theme
 export PATH="$(brew --prefix python)/libexec/bin:$PATH"
 
 # CA Bundle allowed
-CERT_PATH=$(python3 -m certifi)
-export SSL_CERT_FILE=${CERT_PATH}
-export CURL_CA_BUNDLE=${CERT_PATH}
-export REQUESTS_CA_BUNDLE=${CERT_PATH}
-export HTTPLIB2_CA_CERTS=${CERT_PATH}
+if command -v python3 >/dev/null 2>&1; then
+  CERT_PATH=$(python3 -c 'import certifi; print(certifi.where())' 2>/dev/null)
+
+  if [[ -z "$CERT_PATH" ]]; then
+    python3 -m pip install --user --break-system-packages --upgrade --force-reinstall --quiet certifi >/dev/null 2>&1
+    CERT_PATH=$(python3 -c 'from importlib.resources import files; print(files("certifi").joinpath("cacert.pem"))' 2>/dev/null)
+  fi
+
+  if [[ -n "$CERT_PATH" ]]; then
+    export SSL_CERT_FILE="$CERT_PATH"
+    export CURL_CA_BUNDLE="$CERT_PATH"
+    export REQUESTS_CA_BUNDLE="$CERT_PATH"
+    export HTTPLIB2_CA_CERTS="$CERT_PATH"
+  fi
+fi
 
 # Cache ssh key pw
 eval `keychain --quiet --eval ~/.ssh/id_ed25519` >/dev/null 2>&1

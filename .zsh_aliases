@@ -1,6 +1,7 @@
 export HISTIGNORE="*security add-generic-password*"
 alias s='source ~/.zshrc'
 alias cd="z"
+alias tfuse='tenv tf detect --install 2>&1 | grep -Ev "No version files found|Scan project to find IAC files|Found compatible version installed locally"'
 cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
 unalias l 2>/dev/null
 l() {
@@ -136,6 +137,7 @@ brew() {
     fi
 }
 bb() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
+bi() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle install --file Brewfile; }
 bu() {
     HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew upgrade --greedy
     cp ~/Documents/pics/vivaldi.icns /Applications/Vivaldi.app/Contents/Resources/app.icns
