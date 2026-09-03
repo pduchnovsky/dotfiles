@@ -27,8 +27,6 @@ brew "zsh-syntax-highlighting"
 brew "hashicorp/tap/vault"
 # Enable Windows-like alt-tab
 cask "alt-tab"
-# Utility improving 3rd party mouse performance and functionalities
-cask "bettermouse"
 # Web browser
 cask "firefox@developer-edition"
 cask "font-meslo-for-powerlevel10k"
@@ -38,6 +36,8 @@ cask "keepingyouawake"
 cask "middleclick"
 # Control your tools with a few keystrokes
 cask "raycast"
+# Tool to reverse the direction of scrolling
+cask "scroll-reverser"
 # Language and framework for policy as code
 cask "sentinel"
 # Screenshot measurement and annotation tool
