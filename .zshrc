@@ -129,21 +129,11 @@ source $HOMEBREW_PREFIX/share/powerlevel10k/powerlevel10k.zsh-theme
 export PATH="$(brew --prefix python)/libexec/bin:$PATH"
 
 # CA Bundle allowed
-if command -v python3 >/dev/null 2>&1; then
-  CERT_PATH=$(python3 -c 'import certifi; print(certifi.where())' 2>/dev/null)
-
-  if [[ -z "$CERT_PATH" ]]; then
-    python3 -m pip install --user --break-system-packages --upgrade --force-reinstall --quiet certifi >/dev/null 2>&1
-    CERT_PATH=$(python3 -c 'from importlib.resources import files; print(files("certifi").joinpath("cacert.pem"))' 2>/dev/null)
-  fi
-
-  if [[ -n "$CERT_PATH" ]]; then
-    export SSL_CERT_FILE="$CERT_PATH"
-    export CURL_CA_BUNDLE="$CERT_PATH"
-    export REQUESTS_CA_BUNDLE="$CERT_PATH"
-    export HTTPLIB2_CA_CERTS="$CERT_PATH"
-  fi
-fi
+CERT_PATH=$(python3 -m certifi)
+export SSL_CERT_FILE=${CERT_PATH}
+export CURL_CA_BUNDLE=${CERT_PATH}
+export REQUESTS_CA_BUNDLE=${CERT_PATH}
+export HTTPLIB2_CA_CERTS=${CERT_PATH}
 
 # Cache ssh key pw
 eval `keychain --quiet --eval ~/.ssh/id_ed25519` >/dev/null 2>&1

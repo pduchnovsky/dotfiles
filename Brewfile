@@ -1,6 +1,10 @@
 tap "hashicorp/tap", trusted: true
+tap "terraform-linters/tap"
+tap "warrensbox/tap", trusted: true
 # Official Amazon AWS command-line interface
 brew "awscli"
+# Mozilla CA bundle for Python
+brew "certifi"
 # Command-line fuzzy finder written in Go
 brew "fzf"
 # GitHub command-line tool
@@ -11,10 +15,14 @@ brew "gnu-sed"
 brew "jq"
 # User-friendly front-end to ssh-agent(1)
 brew "keychain"
+# MCP server for Atlassian tools (Confluence, Jira)
+brew "mcp-atlassian"
 # Theme for zsh
 brew "powerlevel10k"
-# OpenTofu / Terraform / Terragrunt / Terramate / Atmos version manager
-brew "tenv"
+# Framework for managing multi-language pre-commit hooks
+brew "pre-commit"
+# Tool to generate documentation from Terraform modules
+brew "terraform-docs"
 # Process YAML, JSON, XML, CSV and properties documents from the CLI
 brew "yq"
 # Shell extension to navigate your filesystem faster
@@ -24,9 +32,11 @@ brew "zsh-autosuggestions"
 # Fish shell like syntax highlighting for zsh
 brew "zsh-syntax-highlighting"
 # Vault
-brew "hashicorp/tap/vault"
+brew "hashicorp/tap/vault", trusted: true
 # Enable Windows-like alt-tab
 cask "alt-tab"
+# Utility improving 3rd party mouse performance and functionalities
+cask "bettermouse"
 # Web browser
 cask "firefox@developer-edition"
 cask "font-meslo-for-powerlevel10k"
@@ -36,11 +46,13 @@ cask "keepingyouawake"
 cask "middleclick"
 # Control your tools with a few keystrokes
 cask "raycast"
-# Tool to reverse the direction of scrolling
-cask "scroll-reverser"
 # Language and framework for policy as code
 cask "sentinel"
 # Screenshot measurement and annotation tool
 cask "shottr"
+# Pluggable Terraform linter
+cask "terraform-linters/tap/tflint", trusted: true
+# The tfswitch command lets you switch between terraform versions.
+cask "warrensbox/tap/tfswitch", trusted: true
 # Web browser with built-in email client focusing on customization and control
 cask "vivaldi"
