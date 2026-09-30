@@ -116,7 +116,9 @@ if [ "$(uname)" = "Darwin" ]; then
     export BITBUCKET_ADDRESS=$(fgp BITBUCKET_ADDRESS) # xxxxxx.x-xxx.xxx
     export TFE_FAT_TOKEN=$(fgp TFE_FAT_TOKEN)         # xxxxxxxxxxxxxxx
     export TFE_PROD_TOKEN=$(fgp TFE_PROD_TOKEN)       # xxxxxxxxxxxxxxx
-    export EBHUGHE_TOKEN=$(fgp EBHUGHE_TOKEN)                 # xxxxxxxxxxxxxxx
+    export EBHUGHE_TOKEN=$(fgp EBHUGHE_TOKEN)         # xxxxxxxxxxxxxxx
+    export NETBOX_FAT_TOKEN=$(fgp NETBOX_FAT_TOKEN)   # xxxxxxxxxxxxxxx
+    #export NETBOX_PROD_TOKEN=$(fgp NETBOX_PROD_TOKEN) # xxxxxxxxxxxxxxx
 
     export PIP_EXTRA_INDEX_URL="https://$(fgp TWINE_USERNAME):$(fgp TWINE_PASSWORD)@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple"
 
@@ -127,6 +129,56 @@ if [ "$(uname)" = "Darwin" ]; then
 fi
 
 tf() { terraform $@; }
+republish() {
+    local url="$1" host org ns mod prov ver temp="999.999.999" token branch tags ident sha payload
+    [[ -z "$url" ]] && { echo "Usage: republish <module-registry-url>" >&2; return 1; }
+    [[ "$url" =~ '^https://([^/]+)/app/([^/]+)/registry/modules/private/([^/]+)/([^/]+)/([^/]+)(/([0-9][^/]*))?/?$' ]] || { echo "Bad module URL" >&2; return 1; }
+    host="${match[1]}"; org="${match[2]}"; ns="${match[3]}"; mod="${match[4]}"; prov="${match[5]}"; ver="${match[7]:-1.0.0}"
+
+    case "$host" in
+        "terraform.${CORP_DOMAIN_LONG}") token="$TFE_PROD_TOKEN" ;;
+        "terraform.fat.${CORP_DOMAIN_LONG}") token="$TFE_FAT_TOKEN" ;;
+        *) echo "Unknown TFE host: $host" >&2; return 1 ;;
+    esac
+    [[ -z "$token" ]] && { echo "Missing TFE token for $host" >&2; return 1; }
+
+    local base="https://${host}/api/v2/organizations/${org}/registry-modules/private/${ns}/${mod}/${prov}"
+    _rp() {
+        local out code
+        local -a extra
+        [[ -n "$3" ]] && extra=(--data "$3")
+        out="$(curl -sS -w $'\n%{http_code}' -H "Authorization: Bearer ${token}" -H "Content-Type: application/vnd.api+json" --request "$1" "${extra[@]}" "$2")" || return 1
+        code="${out##*$'\n'}"; out="${out%$'\n'*}"
+        if (( code < 200 || code >= 300 )); then
+            echo "HTTP $code: $1 $2" >&2
+            jq -r '.errors[]?|"  - "+(.title//"")+": "+(.detail//"")' <<<"$out" >&2 2>/dev/null
+            return 1
+        fi
+        echo "$out"
+    }
+
+    local mjson; mjson="$(_rp GET "$base")" || return 1
+    tags="$(jq -r '.data.attributes["vcs-repo"].tags // false' <<<"$mjson")"
+    branch="$(jq -r '.data.attributes["vcs-repo"].branch // empty' <<<"$mjson")"
+    [[ "$tags" == "true" || -z "$branch" ]] && { echo "Module is tag-based or has no branch, aborting" >&2; return 1; }
+
+    ident="$(jq -r '.data.attributes["vcs-repo"].identifier // empty' <<<"$mjson")"
+    sha="$(git ls-remote "ssh://git@${BITBUCKET_ADDRESS}:7999/${ident}.git" "refs/heads/${branch}" | awk '{print $1}')"
+    [[ -z "$sha" ]] && { echo "Could not resolve latest commit for ${ident}@${branch}" >&2; return 1; }
+
+    echo "Republishing ${ns}/${mod}/${prov} @ ${sha} (branch ${branch}):"
+    jq -r '.data.attributes["version-statuses"][] | "  " + .version + " (" + .status + ")"' <<<"$mjson"
+    read "ok?Create temp ${temp}, delete+recreate ${ver}, then remove ${temp}? [y/N] "
+    [[ "$ok" == [yY]* ]] || { echo "Aborted."; return 0; }
+
+    payload='{"data":{"type":"registry-module-versions","attributes":{"version":"'"$temp"'","commit-sha":"'"$sha"'"}}}'
+    _rp POST "${base}/versions" "$payload" >/dev/null || return 1
+    _rp DELETE "${base}/${ver}" >/dev/null || return 1
+    payload='{"data":{"type":"registry-module-versions","attributes":{"version":"'"$ver"'","commit-sha":"'"$sha"'"}}}'
+    _rp POST "${base}/versions" "$payload" >/dev/null || return 1
+    _rp DELETE "${base}/${temp}" >/dev/null || return 1
+    echo "Done."
+}
 brew() {
     local brew_bin="$HOMEBREW_PREFIX/bin/brew"
     if ping -c1 -W1 "$PROXY_ADDR" &>/dev/null; then

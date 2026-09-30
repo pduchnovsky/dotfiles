@@ -11,6 +11,8 @@ brew "fzf"
 brew "gh"
 # GNU implementation of the famous stream editor
 brew "gnu-sed"
+# Configurable static site generator
+brew "hugo"
 # Lightweight and flexible command-line JSON processor
 brew "jq"
 # User-friendly front-end to ssh-agent(1)
