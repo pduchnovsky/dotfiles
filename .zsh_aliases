@@ -129,6 +129,70 @@ if [ "$(uname)" = "Darwin" ]; then
 fi
 
 tf() { terraform $@; }
+
+pre() {
+    local repo_root current_dir temp_base cloud_config cloud_link tf_file
+    local has_cloud=0 init_upgrade=0
+
+    if [[ "${1:-}" == upgrade ]]; then
+        init_upgrade=1
+        shift
+    fi
+
+    current_dir="$PWD"
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
+    temp_base="${TMPDIR:-/tmp}"
+    cloud_config="${temp_base%/}/pre-commit-cloud.tf"
+
+    for tf_file in "$PWD"/*.tf(N); do
+        if grep -Eq '^[[:space:]]*cloud[[:space:]]*\{' "$tf_file"; then
+            has_cloud=1
+        fi
+    done
+
+    if (( has_cloud )); then
+        (
+            cd "$current_dir" || exit 1
+            if (( init_upgrade )); then
+                tf init -upgrade || exit $?
+            elif [[ ! -s .terraform/modules/modules.json ]]; then
+                tf init || exit $?
+            fi
+            cd "$repo_root" || exit 1
+            pre-commit run --all-files "$@"
+        )
+        return $?
+    fi
+
+    if [[ ! -f "$cloud_config" ]]; then
+        printf '%s\n' \
+            'terraform {' \
+            '  cloud {' \
+            '    organization = "iac-management"' \
+            '    hostname     = "terraform.fat.'"${CORP_DOMAIN_LONG}"'"' \
+            '    workspaces {' \
+            '      name = "tfe-2-modules"' \
+            '    }' \
+            '  }' \
+            '}' > "$cloud_config" || return 1
+    fi
+
+    cloud_link="${current_dir}/pre-cloud-${$}.tf"
+
+    (
+        cd "$current_dir" || exit 1
+        ln -s "$cloud_config" "$cloud_link" || exit 1
+        trap 'command rm -f "$cloud_link"' EXIT
+        if (( init_upgrade )); then
+            tf init -upgrade || exit $?
+        elif [[ ! -s .terraform/modules/modules.json ]]; then
+            tf init || exit $?
+        fi
+        cd "$repo_root" || exit 1
+        pre-commit run --all-files "$@"
+    )
+}
+
 republish() {
     local url="$1" host org ns mod prov ver temp="999.999.999" token branch tags ident sha payload
     [[ -z "$url" ]] && { echo "Usage: republish <module-registry-url>" >&2; return 1; }
@@ -263,12 +327,31 @@ fr() {
     }
     case "$1" in
     sol)
-        SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
-        [[ ! -d "$HOME/repos/HORIZON/GCP/$SOL_FACTORY_PROJECT" ]] &&
-            git clone "ssh://git@$BITBUCKET_ADDRESS:7999/HORIZON/$SOL_FACTORY_PROJECT.git" "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT"
-        PROJECTS=$(find "$HOME/repos/HORIZON/$SOL_FACTORY_PROJECT/organization" -type f -name '*.yaml' -print0 |
-            xargs -0 -n1 yq -r '.vcs_project' |
-            tr '[:lower:]' '[:upper:]' | sort -u | grep -v NULL | xargs)
+        local factory cloud factory_dir
+        local -a factory_projects=(
+            "GCP:terraform-gcp-factory-solution-project"
+            "AWS:terraform-aws-factory-account-tailoring"
+        )
+        local -a organization_dirs=()
+        local -a projects=()
+
+        for factory in "${factory_projects[@]}"; do
+            cloud="${factory%%:*}"
+            SOL_FACTORY_PROJECT="${factory#*:}"
+            factory_dir="$HOME/repos/HORIZON/$cloud/$SOL_FACTORY_PROJECT"
+            if [[ ! -d "$factory_dir" ]]; then
+                command git clone "ssh://git@$BITBUCKET_ADDRESS:7999/HORIZON/$SOL_FACTORY_PROJECT.git" "$factory_dir" || return 1
+            fi
+            organization_dirs+=("$factory_dir/organization")
+
+            while IFS= read -r project; do
+                [[ -n "$project" ]] && projects+=("$project")
+            done < <(find "$factory_dir/organization" -type f -name '*.yaml' -print0 |
+                xargs -0 -n1 yq -r "if .vcs_project then .vcs_project elif \"$cloud\" == \"AWS\" then \"aws-\" + .solution_name + \"-\" + .use_case else \"\" end")
+        done
+
+        PROJECTS=$(printf '%s\n' "${projects[@]}" |
+            tr '[:lower:]' '[:upper:]' | sort -u | grep -v '^NULL$' | xargs)
         clonerepo sol
         ;;
     '')
