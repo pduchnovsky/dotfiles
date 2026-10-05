@@ -1,4 +1,36 @@
-export HISTIGNORE="*security add-generic-password*"
+if [[ "$(uname)" == Darwin ]]; then
+    alias sed='gsed'
+    fgp() { security find-generic-password -a "$USER" -s "$1" -w; }
+
+    # backup script scans these literal references to preserve the complete Keychain inventory.
+    : fgp RESTIC_PASSWORD
+    : fgp LAN_ADDR
+    : fgp PATH_ADDR
+    : fgp PROXY_ADDR
+    : fgp SN_PASS
+    : fgp SN_PASS_FAT
+    : fgp JIRA_URL
+    : fgp JIRA_TOKEN
+    : fgp CONFLUENCE_TOKEN
+    : fgp CORP_DOMAIN
+    : fgp CORP_DOMAIN_LONG
+    : fgp BITBUCKET_TOKEN
+    : fgp BITBUCKET_ADDRESS
+    : fgp TFE_FAT_TOKEN
+    : fgp TFE_PROD_TOKEN
+    : fgp EBHUGHE_TOKEN
+    : fgp NETBOX_FAT_TOKEN
+    : fgp TWINE_USERNAME
+    : fgp TWINE_PASSWORD
+
+    # SSH via PATH
+    sshviapath() {
+        local lan_addr="$(fgp LAN_ADDR)" path_addr="$(fgp PATH_ADDR)"
+        ssh "$USER@$1@$2.$lan_addr@ssh.$path_addr"
+    }
+    alias ibis1='sshviapath '$USER' ibis1'
+    alias ibis2='sshviapath '$USER' ibis2'
+fi
 alias s='source ~/.zshrc'
 alias cd="z"
 cfg() { command git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" "$@"; }
@@ -38,10 +70,233 @@ b() {
     gco $default_branch && sync
 }
 backup() {
-    /Volumes/Backup/backup.sh --backup "$@"
+    RESTIC_PASSWORD="$(fgp RESTIC_PASSWORD)" /Volumes/Backup/backup.sh --backup "$@"
 }
 restore() {
-    /Volumes/Backup/backup.sh --restore "$@"
+    RESTIC_PASSWORD="$(fgp RESTIC_PASSWORD)" /Volumes/Backup/backup.sh --restore "$@"
+}
+secret() {
+    local action="$1"
+    local name="$2"
+
+    case "$action" in
+        set|add)
+            if [ -z "$name" ]; then
+                echo "Usage: secret set <name>"
+                return 1
+            fi
+            security add-generic-password -U -a "$USER" -s "$name" -w
+            ;;
+        get)
+            if [ -z "$name" ]; then
+                echo "Usage: secret get <name>"
+                return 1
+            fi
+            security find-generic-password -a "$USER" -s "$name" -w
+            ;;
+        delete|del|rm)
+            if [ -z "$name" ]; then
+                echo "Usage: secret delete <name>"
+                return 1
+            fi
+            security delete-generic-password -a "$USER" -s "$name"
+            ;;
+        *)
+            echo "Usage: secret <set|get|delete> <name>"
+            return 1
+            ;;
+    esac
+}
+tfelog() {
+    emulate -L zsh
+    setopt nounset pipefail
+
+    local TFE_HOST="${TFE_HOST-}" TFE_ORG="${TFE_ORG-}" DAYS="${DAYS-}" MESSAGE="${MESSAGE-}"
+    local CREDENTIALS_FILE="$HOME/.terraform.d/credentials.tfrc.json"
+    local show_url=1 argument input_name usage
+    local TFE_TOKEN SINCE response page=1 matches=0 errored_runs=0
+    local run run_details created run_id workspace_id workspace plan_id apply_id phase phase_id log_url scan_task matched_jobs match
+    local oldest next_page affected_count
+    local -A workspace_names affected_runs
+    local -a api_headers scan_jobs
+
+    usage="Usage: tfelog [--host HOST] [--org ORG] [--days N] [--message TEXT] [--no-url]"
+    while (( $# > 0 )); do
+        argument="$1"
+        case "$argument" in
+            --no-url) show_url=0 ;;
+            --days|--host|--org|--message)
+                if (( $# < 2 )) || [[ -z "$2" ]]; then
+                    print -u2 "$argument requires a value"
+                    print -u2 "$usage"
+                    return 2
+                fi
+                case "$argument" in
+                    --days)
+                        if [[ ! "$2" =~ '^[1-9][0-9]*$' ]]; then
+                            print -u2 "--days requires a positive integer"
+                            print -u2 "$usage"
+                            return 2
+                        fi
+                        DAYS="$2"
+                        ;;
+                    --host) TFE_HOST="$2" ;;
+                    --org) TFE_ORG="$2" ;;
+                    --message) MESSAGE="$2" ;;
+                esac
+                shift
+                ;;
+            *)
+                print -u2 "Unknown option: $argument"
+                print -u2 "$usage"
+                return 2
+                ;;
+        esac
+        shift
+    done
+
+    for input_name in TFE_HOST TFE_ORG DAYS MESSAGE; do
+        if [[ -z "${(P)input_name}" ]]; then
+            print -u2 "Missing required input: $input_name"
+            print -u2 "Set $input_name or provide its command-line option."
+            return 2
+        fi
+    done
+    if [[ ! "$DAYS" =~ '^[1-9][0-9]*$' ]]; then
+        print -u2 "DAYS must be a positive integer"
+        return 2
+    fi
+    if ! command -v curl >/dev/null || ! command -v jq >/dev/null; then
+        print -u2 "Required commands are missing: curl and jq"
+        return 1
+    fi
+    if [[ ! -r "$CREDENTIALS_FILE" ]]; then
+        print -u2 "Terraform credentials file is not readable: $CREDENTIALS_FILE"
+        return 1
+    fi
+
+    TFE_TOKEN="$(jq -er --arg host "$TFE_HOST" '.credentials[$host].token' "$CREDENTIALS_FILE")" || {
+        print -u2 "No Terraform login token found for $TFE_HOST"
+        return 1
+    }
+    SINCE="$(date -u -v-"${DAYS}"d '+%Y-%m-%dT%H:%M:%SZ')"
+    api_headers=(-H "Authorization: Bearer ${TFE_TOKEN}" -H 'Content-Type: application/vnd.api+json')
+
+    if (( show_url )); then
+        printf '%-24s %-50s %-8s %s\n' 'CREATED_AT' 'WORKSPACE' 'PHASE' 'RUN_URL'
+    else
+        printf '%-24s %-50s %-8s\n' 'CREATED_AT' 'WORKSPACE' 'PHASE'
+    fi
+
+    while true; do
+        response="$(curl -fsS -G --retry 3 "${api_headers[@]}" \
+            "https://${TFE_HOST}/api/v2/organizations/${TFE_ORG}/runs" \
+            --data-urlencode 'filter[operation]=plan_only,plan_and_apply,save_plan,refresh_only,destroy,empty_apply' \
+            --data-urlencode 'filter[status]=errored' \
+            --data-urlencode "page[number]=${page}" --data-urlencode 'page[size]=100')" || {
+            print -u2 "Failed to retrieve runs page $page"
+            return 1
+        }
+
+        while IFS= read -r run; do
+            created="$(jq -r '.created' <<<"$run")"
+            [[ "$created" < "$SINCE" ]] && continue
+            ((errored_runs += 1))
+
+            run_id="$(jq -r '.run_id' <<<"$run")"
+            workspace_id="$(jq -r '.workspace_id' <<<"$run")"
+            if [[ -z "${workspace_names[$workspace_id]-}" ]]; then
+                workspace_names[$workspace_id]="$(curl -fsS --retry 3 "${api_headers[@]}" \
+                    "https://${TFE_HOST}/api/v2/workspaces/${workspace_id}" | jq -er '.data.attributes.name')" || {
+                    print -u2 "Could not resolve workspace $workspace_id for $run_id"
+                    continue
+                }
+            fi
+            workspace="${workspace_names[$workspace_id]}"
+            plan_id="$(jq -r '.plan_id // empty' <<<"$run")"
+            apply_id="$(jq -r '.apply_id // empty' <<<"$run")"
+            [[ -z "$plan_id" && -z "$apply_id" ]] && continue
+
+            run_details="$(curl -fsS -G --retry 3 "${api_headers[@]}" \
+                "https://${TFE_HOST}/api/v2/runs/${run_id}" \
+                --data-urlencode 'include=plan,apply')" || {
+                print -u2 "Could not retrieve phase metadata for $run_id"
+                continue
+            }
+
+            for phase in plan apply; do
+                phase_id="$(jq -r --arg phase "$phase" '.[$phase + "_id"] // empty' <<<"$run")"
+                [[ -z "$phase_id" ]] && continue
+                log_url="$(jq -r --arg phase "$phase" --arg phase_id "$phase_id" '
+                    .included[]?
+                    | select(.type == (if $phase == "apply" then "applies" else "plans" end) and .id == $phase_id)
+                    | .attributes["log-read-url"] // empty
+                ' <<<"$run_details")"
+                [[ -z "$log_url" ]] && continue
+                scan_task="$(jq -cn --arg log_url "$log_url" --arg created "$created" \
+                    --arg workspace "$workspace" --arg run_id "$run_id" --arg phase "$phase" \
+                    '{log_url: $log_url, created: $created, workspace: $workspace, run_id: $run_id, phase: $phase}')"
+                scan_jobs+=("$scan_task")
+            done
+        done < <(jq -c '
+            . as $page
+            | .data[]
+            | . as $run
+            | {
+                run_id: $run.id,
+                created: $run.attributes["created-at"],
+                workspace_id: $run.relationships.workspace.data.id,
+                plan_id: ($run.relationships.plan.data.id // ""),
+                apply_id: ($run.relationships.apply.data.id // "")
+            }
+        ' <<<"$response")
+
+        if (( ${#scan_jobs} > 0 )); then
+            matched_jobs="$(printf '%s\0' "${scan_jobs[@]}" | xargs -0 -P 6 -n 1 /bin/zsh -fc '
+                emulate -L zsh
+                setopt pipefail
+                local log_url="$(jq -r ".log_url" <<<"$2")"
+                if curl -fsSL --retry 3 "$log_url" | grep -F "$1" >/dev/null; then
+                    print -r -- "$2"
+                fi
+            ' _ "$MESSAGE")" || {
+                print -u2 "Failed while scanning logs for runs page $page"
+                return 1
+            }
+
+            if [[ -n "$matched_jobs" ]]; then
+                while IFS= read -r match; do
+                    created="$(jq -r '.created' <<<"$match")"
+                    workspace="$(jq -r '.workspace' <<<"$match")"
+                    run_id="$(jq -r '.run_id' <<<"$match")"
+                    phase="$(jq -r '.phase' <<<"$match")"
+                    if (( show_url )); then
+                        printf '%-24s %-50s %-8s %s\n' "$created" "$workspace" "$phase" \
+                            "https://${TFE_HOST}/app/${TFE_ORG}/workspaces/${workspace}/runs/${run_id}"
+                    else
+                        printf '%-24s %-50s %-8s\n' "$created" "$workspace" "$phase"
+                    fi
+                    affected_runs[$run_id]=1
+                    ((matches += 1))
+                done < <(jq -sc 'sort_by(.created) | reverse[]' <<<"$matched_jobs")
+            fi
+            scan_jobs=()
+        fi
+
+        oldest="$(jq -r '.data[-1].attributes["created-at"] // empty' <<<"$response")"
+        [[ -n "$oldest" && "$oldest" < "$SINCE" ]] && break
+        next_page="$(jq -r '.meta.pagination["next-page"] // empty' <<<"$response")"
+        [[ -z "$next_page" ]] && break
+        page="$next_page"
+    done
+
+    affected_count=${#affected_runs}
+    if (( errored_runs > 0 )); then
+        printf 'Matching errored runs: %s/%s; matching phases: %s\n' \
+            "$affected_count" "$errored_runs" "$matches" >&2
+    else
+        print -u2 "No errored runs found since $SINCE"
+    fi
 }
 ba() {
     original_dir=$(pwd)
@@ -59,39 +314,6 @@ ba() {
         }
     done
 }
-secret() {
-    local action="$1"
-    local name="$2"
-    local value="$3"
-
-    case "$action" in
-        set|add)
-            if [ -z "$name" ] || [ -z "$value" ]; then
-                echo "Usage: secret set <name> <value>"
-                return 1
-            fi
-            security add-generic-password -U -a "$USER" -s "$name" -w "$value"
-            ;;
-        get)
-            if [ -z "$name" ]; then
-                echo "Usage: secret get <name>"
-                return 1
-            fi
-            security find-generic-password -a "$USER" -s "$name" -w
-            ;;
-        delete|del|rm)
-            if [ -z "$name" ]; then
-                echo "Usage: secret delete <name>"
-                return 1
-            fi
-            security delete-generic-password -a "$USER" -s "$name"
-            ;;
-        *)
-            echo "Usage: secret <set|get|delete> <name> [value]"
-            return 1
-            ;;
-    esac
-}
 dot() {
     url="https://github.com/pduchnovsky/dotfiles"
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -102,44 +324,14 @@ dot() {
         xdg-open "$url"
     fi
 }
-if [ "$(uname)" = "Darwin" ]; then
-    # security add-generic-password -a $USER -s xxxxx -w 'xxxxx' -U
-    fgp() { security find-generic-password -a $USER -s $1 -w; }
-    alias sed='gsed'
-
-    # Secrets read
-    export RESTIC_PASSWORD=$(fgp RESTIC_PASSWORD)     # xxxxxxxxxxxxxxx
-    export LAN_ADDR=$(fgp LAN_ADDR)                   # xx.xxx.xx
-    export PATH_ADDR=$(fgp PATH_ADDR)                 # xxx.xx-xx.xxx
-    export PROXY_ADDR=$(fgp PROXY_ADDR)               # x.x.x.x
-    export SN_PASS=$(fgp SN_PASS)                     # xxxxxxxxxxxxxxx
-    export SN_PASS_FAT=$(fgp SN_PASS_FAT)             # xxxxxxxxxxxxxxx
-    export JIRA_URL=$(fgp JIRA_URL)                   # xxxx.x-xxx.xxx
-    export JIRA_TOKEN=$(fgp JIRA_TOKEN)               # xxxxxxxxxxxxxxx
-    export CONFLUENCE_TOKEN=$(fgp CONFLUENCE_TOKEN)   # xxxxxxxxxxxxxxx
-    export CORP_DOMAIN=$(fgp CORP_DOMAIN)             # x-xxx.xxx
-    export CORP_DOMAIN_LONG=$(fgp CORP_DOMAIN_LONG)   # xxxxx-xxxxx.xxx
-    export BITBUCKET_TOKEN=$(fgp BITBUCKET_TOKEN)     # xxxxxxxxxxxxxxx
-    export BITBUCKET_ADDRESS=$(fgp BITBUCKET_ADDRESS) # xxxxxx.x-xxx.xxx
-    export TFE_FAT_TOKEN=$(fgp TFE_FAT_TOKEN)         # xxxxxxxxxxxxxxx
-    export TFE_PROD_TOKEN=$(fgp TFE_PROD_TOKEN)       # xxxxxxxxxxxxxxx
-    export EBHUGHE_TOKEN=$(fgp EBHUGHE_TOKEN)         # xxxxxxxxxxxxxxx
-    export NETBOX_FAT_TOKEN=$(fgp NETBOX_FAT_TOKEN)   # xxxxxxxxxxxxxxx
-    #export NETBOX_PROD_TOKEN=$(fgp NETBOX_PROD_TOKEN) # xxxxxxxxxxxxxxx
-
-    export PIP_EXTRA_INDEX_URL="https://$(fgp TWINE_USERNAME):$(fgp TWINE_PASSWORD)@repo.${LAN_ADDR}/artifactory/api/pypi/pypi-repo/simple"
-
-    # SSH via PATH
-    sshviapath() { ssh $USER@$1@$2.$LAN_ADDR@ssh.$PATH_ADDR; }
-    alias ibis1='sshviapath '$USER' ibis1'
-    alias ibis2='sshviapath '$USER' ibis2'
-fi
 
 tf() { terraform $@; }
+tfi() { tf init "$@"; }
 
 pre() {
     local repo_root current_dir temp_base cloud_config cloud_link tf_file
     local has_cloud=0 init_upgrade=0
+    local CORP_DOMAIN_LONG="$(fgp CORP_DOMAIN_LONG)"
 
     if [[ "${1:-}" == upgrade ]]; then
         init_upgrade=1
@@ -202,13 +394,14 @@ pre() {
 
 republish() {
     local url="$1" host org ns mod prov ver temp="999.999.999" token branch tags ident sha payload
+    local CORP_DOMAIN_LONG="$(fgp CORP_DOMAIN_LONG)" BITBUCKET_ADDRESS
     [[ -z "$url" ]] && { echo "Usage: republish <module-registry-url>" >&2; return 1; }
     [[ "$url" =~ '^https://([^/]+)/app/([^/]+)/registry/modules/private/([^/]+)/([^/]+)/([^/]+)(/([0-9][^/]*))?/?$' ]] || { echo "Bad module URL" >&2; return 1; }
     host="${match[1]}"; org="${match[2]}"; ns="${match[3]}"; mod="${match[4]}"; prov="${match[5]}"; ver="${match[7]:-1.0.0}"
 
     case "$host" in
-        "terraform.${CORP_DOMAIN_LONG}") token="$TFE_PROD_TOKEN" ;;
-        "terraform.fat.${CORP_DOMAIN_LONG}") token="$TFE_FAT_TOKEN" ;;
+        "terraform.${CORP_DOMAIN_LONG}") token="$(fgp TFE_PROD_TOKEN)" ;;
+        "terraform.fat.${CORP_DOMAIN_LONG}") token="$(fgp TFE_FAT_TOKEN)" ;;
         *) echo "Unknown TFE host: $host" >&2; return 1 ;;
     esac
     [[ -z "$token" ]] && { echo "Missing TFE token for $host" >&2; return 1; }
@@ -234,6 +427,7 @@ republish() {
     [[ "$tags" == "true" || -z "$branch" ]] && { echo "Module is tag-based or has no branch, aborting" >&2; return 1; }
 
     ident="$(jq -r '.data.attributes["vcs-repo"].identifier // empty' <<<"$mjson")"
+    BITBUCKET_ADDRESS="$(fgp BITBUCKET_ADDRESS)"
     sha="$(git ls-remote "ssh://git@${BITBUCKET_ADDRESS}:7999/${ident}.git" "refs/heads/${branch}" | awk '{print $1}')"
     [[ -z "$sha" ]] && { echo "Could not resolve latest commit for ${ident}@${branch}" >&2; return 1; }
 
@@ -252,6 +446,7 @@ republish() {
 }
 brew() {
     local brew_bin="$HOMEBREW_PREFIX/bin/brew"
+    local PROXY_ADDR="$(fgp PROXY_ADDR)"
     if ping -c1 -W1 "$PROXY_ADDR" &>/dev/null; then
         ALL_PROXY="socks5://$PROXY_ADDR:80" "$brew_bin" "$@"
     else
@@ -259,7 +454,7 @@ brew() {
     fi
 }
 bb() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
-bi() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle install --file Brewfile; }
+bbi() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle install --file Brewfile; }
 bu() {
     HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew upgrade --greedy
     cp ~/Documents/pics/vivaldi.icns /Applications/Vivaldi.app/Contents/Resources/app.icns
@@ -305,6 +500,7 @@ ggo() {
     open "$web_url"
 }
 fr() {
+    local BITBUCKET_ADDRESS="$(fgp BITBUCKET_ADDRESS)" BITBUCKET_TOKEN="$(fgp BITBUCKET_TOKEN)"
     clonerepo() {
         local opt project repo target_dir
         opt=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
@@ -390,10 +586,6 @@ cg() {
         done
     done
 }
-pack() {
-    current_dir_name=$(basename "$(pwd -P)")
-    (cd .. && zip -r "$HOME/Downloads/${current_dir_name}.zip" "${current_dir_name}" -x "${current_dir_name}/.git/*" -x "${current_dir_name}/.git")
-}
 sync() {
     case "$1" in
     "")
@@ -457,15 +649,13 @@ push() {
     fi
 }
 task() {
-  # set -x
-  JIRA_TOKEN=$(security find-generic-password -a $USER -s JIRA_TOKEN -w)
-  JIRA_URL=$(security find-generic-password -a $USER -s JIRA_URL -w)
+    local JIRA_TOKEN="$(fgp JIRA_TOKEN)" JIRA_URL="$(fgp JIRA_URL)"
 
   red=`tput setaf 1`
   green=`tput setaf 2`
   reset=`tput sgr0`
 
-  if [[ -z "${JIRA_TOKEN}" ]]; then 
+  if [[ -z "${JIRA_TOKEN}" ]]; then
     echo "Missing env. variable JIRA_TOKEN"
   else
     CMD=$(echo curl -k --url "https://${JIRA_URL}/rest/api/latest/issue" \
@@ -478,17 +668,17 @@ task() {
             "project": {"key": "CEP"},
             "summary": "'"${*}"'",
             "description": "'"${*}"'",
-            "issuetype": {"id": "6"}, 
+            "issuetype": {"id": "6"},
             "labels": ["TEST"],
           }
         }')
-    
+
     echo  "$(echo ${CMD} | sed -E 's/Bearer [a-zA-Z0-9]+/Bearer *****/')"
     echo
     echo "Would you like to ${green}execute above cURL${reset} call ${red}[y|Y|yes]${reset} or ${green}[n|no|N]${reset}?"
     read choice
 
-    case "$choice" in 
+    case "$choice" in
       y|Y|yes|Yes )
         # set -x
         echo "Executing."
@@ -502,11 +692,11 @@ task() {
               "project": {"key": "CEP"},
               "summary": "'"${*}"'",
               "description": "'"${*}"'",
-              "issuetype": {"id": "6"}, 
+              "issuetype": {"id": "6"},
               "labels": ["SRE"]
             }
           }' | jq -r '.key')
-        
+
         text=$(echo "${*}" | tr " " "-")
         echo "https://${JIRA_URL}/browse/${KEY}"
         echo "git checkout -b feature/${KEY}-${text}" #| pbcopy
@@ -523,7 +713,8 @@ sn() {(
     SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
     cd "$HOME/repos/HORIZON/GCP/$SOL_FACTORY_PROJECT" || return 1
     source tools/venv_solf/bin/activate
-    pip install -r tools/requirements.txt > /dev/null 2>&1
+    PIP_EXTRA_INDEX_URL="https://$(fgp TWINE_USERNAME):$(fgp TWINE_PASSWORD)@repo.$(fgp LAN_ADDR)/artifactory/api/pypi/pypi-repo/simple" \
+        pip install -r tools/requirements.txt > /dev/null 2>&1
 
     local SN_ENV="prod"
     local RITM_ARG
@@ -540,10 +731,9 @@ sn() {(
         return 1
     fi
 
-    export RITM="$RITM_ARG"
-    export SN_ENV
+    local SN_PASS="$(fgp SN_PASS)" CORP_DOMAIN_LONG="$(fgp CORP_DOMAIN_LONG)"
 
-    python3 - <<'PY'
+    RITM="$RITM_ARG" SN_ENV="$SN_ENV" SN_PASS="$SN_PASS" CORP_DOMAIN_LONG="$CORP_DOMAIN_LONG" python3 - <<'PY'
 import os
 from pprint import pprint
 from python_utils.service_now.utils import get_sysids, get_sn_tfvariables
@@ -569,6 +759,7 @@ pprint(values)
 PY
 )}
 presentation() {
+    local JIRA_TOKEN="$(fgp JIRA_TOKEN)" JIRA_URL="$(fgp JIRA_URL)"
     if [[ -z "${JIRA_TOKEN}" ]]; then
         echo "Missing env. variable JIRA_TOKEN"
     else
@@ -621,7 +812,6 @@ presentation() {
     fi
 
 }
-alias nxrestart="sudo /etc/NX/nxserver --restart"
 
 # Personal
 alias 1='ssh server'

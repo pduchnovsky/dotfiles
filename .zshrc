@@ -79,7 +79,7 @@ DISABLE_MAGIC_FUNCTIONS="true"
 # Add wisely, as too many plugins slow down shell startup.
 plugins=(git history)
 
-source $ZSH/oh-my-zsh.sh
+[[ ! -r "$ZSH/oh-my-zsh.sh" ]] || source "$ZSH/oh-my-zsh.sh"
 
 # User configuration
 
@@ -116,41 +116,65 @@ source $ZSH/oh-my-zsh.sh
 export HOMEBREW_NO_ENV_HINTS=true
 export HOMEBREW_CASK_OPTS="--no-quarantine"
 if [ "$(uname)" = "Darwin" ]; then
+  if [[ -x /opt/homebrew/bin/brew ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
 else
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+  [[ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]] || eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
-source $HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-source $HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-source $HOMEBREW_PREFIX/share/powerlevel10k/powerlevel10k.zsh-theme
+if [[ -n "${HOMEBREW_PREFIX:-}" ]]; then
+  for sourced_file in \
+    "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" \
+    "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" \
+    "$HOMEBREW_PREFIX/share/powerlevel10k/powerlevel10k.zsh-theme"; do
+    [[ -f "$sourced_file" ]] && source "$sourced_file"
+  done
+fi
 
 # Brew Python
-export PATH="$(brew --prefix python)/libexec/bin:$PATH"
+if [[ -n "${HOMEBREW_PREFIX:-}" && -x "$HOMEBREW_PREFIX/bin/brew" ]]; then
+  if python_prefix="$("$HOMEBREW_PREFIX/bin/brew" --prefix python 2>/dev/null)" &&
+    [[ -d "$python_prefix/libexec/bin" ]]; then
+    export PATH="$python_prefix/libexec/bin:$PATH"
+  fi
+fi
 
 # CA Bundle allowed
-CERT_PATH=$(python3 -m certifi)
-export SSL_CERT_FILE=${CERT_PATH}
-export CURL_CA_BUNDLE=${CERT_PATH}
-export REQUESTS_CA_BUNDLE=${CERT_PATH}
-export HTTPLIB2_CA_CERTS=${CERT_PATH}
+if command -v python3 >/dev/null 2>&1 && CERT_PATH="$(python3 -m certifi 2>/dev/null)" && [[ -r "$CERT_PATH" ]]; then
+  export SSL_CERT_FILE="$CERT_PATH"
+  export CURL_CA_BUNDLE="$CERT_PATH"
+  export REQUESTS_CA_BUNDLE="$CERT_PATH"
+  export HTTPLIB2_CA_CERTS="$CERT_PATH"
+fi
 
 # Cache ssh key pw
-eval `keychain --quiet --eval ~/.ssh/id_ed25519` >/dev/null 2>&1
+if command -v keychain >/dev/null 2>&1; then
+  eval "$(keychain --quiet --eval ~/.ssh/id_ed25519)" >/dev/null 2>&1
+fi
 
 # Disable highlighting eol
 PROMPT_EOL_MARK=''
 
 # fzf
-source <(fzf --zsh)
+if command -v fzf >/dev/null 2>&1; then
+  eval "$(fzf --zsh)"
+fi
 
 # Zoxide
-eval "$(zoxide init zsh)"
+if command -v zoxide >/dev/null 2>&1; then
+  eval "$(zoxide init zsh)"
+fi
 
 # google-cloud-sdk
-[ -d $HOMEBREW_PREFIX/share/google-cloud-sdk ] &&
-source "$HOMEBREW_PREFIX/share/google-cloud-sdk/path.zsh.inc" && \
-source "$HOMEBREW_PREFIX/share/google-cloud-sdk/completion.zsh.inc"
+if [[ -n "${HOMEBREW_PREFIX:-}" && \
+  -r "$HOMEBREW_PREFIX/share/google-cloud-sdk/path.zsh.inc" && \
+  -r "$HOMEBREW_PREFIX/share/google-cloud-sdk/completion.zsh.inc" ]]; then
+  source "$HOMEBREW_PREFIX/share/google-cloud-sdk/path.zsh.inc"
+  source "$HOMEBREW_PREFIX/share/google-cloud-sdk/completion.zsh.inc"
+fi
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
