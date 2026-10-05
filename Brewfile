@@ -23,6 +23,8 @@ brew "mcp-atlassian"
 brew "powerlevel10k"
 # Framework for managing multi-language pre-commit hooks
 brew "pre-commit"
+# Fast, efficient and secure backup program
+brew "restic"
 # Tool to generate documentation from Terraform modules
 brew "terraform-docs"
 # Process YAML, JSON, XML, CSV and properties documents from the CLI
@@ -56,5 +58,3 @@ cask "shottr"
 cask "terraform-linters/tap/tflint", trusted: true
 # The tfswitch command lets you switch between terraform versions.
 cask "warrensbox/tap/tfswitch", trusted: true
-# Web browser with built-in email client focusing on customization and control
-cask "vivaldi"

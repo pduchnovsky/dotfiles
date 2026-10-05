@@ -37,6 +37,12 @@ b() {
     default_branch=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
     gco $default_branch && sync
 }
+backup() {
+    /Volumes/Backup/backup.sh --backup "$@"
+}
+restore() {
+    /Volumes/Backup/backup.sh --restore "$@"
+}
 ba() {
     original_dir=$(pwd)
     for i in $(find ~/repos -name '.git' -type d); do
@@ -102,6 +108,7 @@ if [ "$(uname)" = "Darwin" ]; then
     alias sed='gsed'
 
     # Secrets read
+    export RESTIC_PASSWORD=$(fgp RESTIC_PASSWORD)     # xxxxxxxxxxxxxxx
     export LAN_ADDR=$(fgp LAN_ADDR)                   # xx.xxx.xx
     export PATH_ADDR=$(fgp PATH_ADDR)                 # xxx.xx-xx.xxx
     export PROXY_ADDR=$(fgp PROXY_ADDR)               # x.x.x.x
