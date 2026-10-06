@@ -501,33 +501,75 @@ ggo() {
 }
 fr() {
     local BITBUCKET_ADDRESS="$(fgp BITBUCKET_ADDRESS)" BITBUCKET_TOKEN="$(fgp BITBUCKET_TOKEN)"
+    local only_uncloned=0 argument
+    local -a project_args
     clonerepo() {
-        local opt project repo target_dir
+        local opt project repo target_dir response selection selected_repo
+        local -a projects_array repositories selected_repos visible_repos
         opt=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
-        PROJECTS_ARRAY=()
+        repositories=()
         read -a projects_array <<<"$PROJECTS" 2>/dev/null || read -A projects_array <<<"$PROJECTS"
         for project in "${projects_array[@]}"; do
-            PROJECTS_ARRAY+=("https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")
+            response="$(curl -fsS --retry 3 --retry-delay 1 --retry-connrefused \
+                -u "${USER}:$BITBUCKET_TOKEN" \
+                "https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")" || {
+                print -u2 "Failed to retrieve repositories for project $project"
+                continue
+            }
+            while IFS= read -r repo; do
+                [[ -n "$repo" ]] && repositories+=("$repo")
+            done < <(jq -r '.values[]? | "\(.project.key)/\(.name)"' <<<"$response")
         done
-        TARGET=$(printf "%s\n" "${PROJECTS_ARRAY[@]}" |
-            xargs -P10 -n1 curl -ks -u "${USER}:$BITBUCKET_TOKEN" |
-            jq -r '.values|.[] | "\(.project.key)/\(.name)"' | fzf)
-        [[ -z "$TARGET" ]] && return 130
-
-        project="${TARGET%%/*}"
-        repo="${TARGET#*/}"
-        target_dir="$HOME/repos/${opt}${TARGET}"
-
-        if [[ "$project" == "HORIZON" ]]; then
-            case "${(L)repo}" in
-            *aws*) target_dir="$HOME/repos/HORIZON/AWS/$repo" ;;
-            *gcp*) target_dir="$HOME/repos/HORIZON/GCP/$repo" ;;
-            esac
+        for selected_repo in "${repositories[@]}"; do
+            project="${selected_repo%%/*}"
+            repo="${selected_repo#*/}"
+            target_dir="$HOME/repos/${opt}${selected_repo}"
+            if [[ "$project" == "HORIZON" ]]; then
+                case "${(L)repo}" in
+                *aws*) target_dir="$HOME/repos/HORIZON/AWS/$repo" ;;
+                *gcp*) target_dir="$HOME/repos/HORIZON/GCP/$repo" ;;
+                esac
+            fi
+            if (( only_uncloned )) && [[ -d "$target_dir" ]]; then
+                continue
+            fi
+            visible_repos+=("$selected_repo")
+        done
+        if (( only_uncloned )) && (( ${#visible_repos[@]} == 0 )); then
+            print -u2 "No un-cloned repositories found."
+            return 0
         fi
 
-        [[ ! -d "$target_dir" ]] && command git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$TARGET.git" "$target_dir"
+        selection="$(printf "%s\n" "${visible_repos[@]}" | LC_ALL=C sort -f | fzf --multi --no-sort)"
+        [[ -z "$selection" ]] && return 130
+        selected_repos=("${(@f)selection}")
+
+        for selected_repo in "${selected_repos[@]}"; do
+            project="${selected_repo%%/*}"
+            repo="${selected_repo#*/}"
+            target_dir="$HOME/repos/${opt}${selected_repo}"
+
+            if [[ "$project" == "HORIZON" ]]; then
+                case "${(L)repo}" in
+                *aws*) target_dir="$HOME/repos/HORIZON/AWS/$repo" ;;
+                *gcp*) target_dir="$HOME/repos/HORIZON/GCP/$repo" ;;
+                esac
+            fi
+
+            if [[ ! -d "$target_dir" ]]; then
+                command git clone "ssh://git@$BITBUCKET_ADDRESS:7999/$selected_repo.git" "$target_dir" || return $?
+            fi
+        done
         cd "$target_dir"
     }
+    for argument in "$@"; do
+        case "$argument" in
+        -u|--uncloned) only_uncloned=1 ;;
+        *) project_args+=("$argument") ;;
+        esac
+    done
+    set -- "${project_args[@]}"
+
     case "$1" in
     sol)
         local factory cloud factory_dir
