@@ -25,8 +25,8 @@ brew "powerlevel10k"
 brew "pre-commit"
 # Fast, efficient and secure backup program
 brew "restic"
-# Tool to generate documentation from Terraform modules
-brew "terraform-docs"
+# Autoformat shell script source code
+brew "shfmt"
 # Process YAML, JSON, XML, CSV and properties documents from the CLI
 brew "yq"
 # Shell extension to navigate your filesystem faster

@@ -65,10 +65,6 @@ git() {
     command git "$@"
 }
 p() { system_profiler SPPowerDataType | grep -E "Wattage|Amperage|Voltage"; }
-b() {
-    default_branch=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
-    gco $default_branch && sync
-}
 backup() {
     RESTIC_PASSWORD="$(fgp RESTIC_PASSWORD)" /Volumes/Backup/backup.sh --backup "$@"
 }
@@ -298,6 +294,10 @@ tfelog() {
         print -u2 "No errored runs found since $SINCE"
     fi
 }
+b() {
+    default_branch=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+    gco $default_branch && sync
+}
 ba() {
     original_dir=$(pwd)
     for i in $(find ~/repos -name '.git' -type d); do
@@ -453,8 +453,8 @@ brew() {
         "$brew_bin" "$@"
     fi
 }
-bb() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle dump -f && sed -i '/^vscode/d' Brewfile; }
-bbi() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle install --file Brewfile; }
+bb() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle dump -f --file ~/Brewfile && sed -i '/^vscode/d' ~/Brewfile; }
+bbi() { HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew bundle install --file ~/Brewfile; }
 bu() {
     HOMEBREW_NO_UPDATE_REPORT_NEW=1 brew upgrade --greedy
     cp ~/Documents/pics/vivaldi.icns /Applications/Vivaldi.app/Contents/Resources/app.icns
