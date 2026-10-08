@@ -22,6 +22,7 @@ if [[ "$(uname)" == Darwin ]]; then
     : fgp NETBOX_FAT_TOKEN
     : fgp TWINE_USERNAME
     : fgp TWINE_PASSWORD
+	: fgp NETBOX_SECRET
 
     # SSH via PATH
     sshviapath() {
@@ -510,7 +511,7 @@ fr() {
         repositories=()
         read -a projects_array <<<"$PROJECTS" 2>/dev/null || read -A projects_array <<<"$PROJECTS"
         for project in "${projects_array[@]}"; do
-            response="$(curl -fsS --retry 3 --retry-delay 1 --retry-connrefused \
+            response="$(curl -fsS --retry 5 --retry-delay 1 --retry-connrefused \
                 -u "${USER}:$BITBUCKET_TOKEN" \
                 "https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")" || {
                 print -u2 "Failed to retrieve repositories for project $project"
@@ -754,9 +755,12 @@ task() {
 sn() {(
     SOL_FACTORY_PROJECT=terraform-gcp-factory-solution-project
     cd "$HOME/repos/HORIZON/GCP/$SOL_FACTORY_PROJECT" || return 1
-    source tools/venv_solf/bin/activate
+    if [[ ! -d tools/venv_solf ]]; then
+        python3 -m venv tools/venv_solf || return 1
+    fi
+    source tools/venv_solf/bin/activate || return 1
     PIP_EXTRA_INDEX_URL="https://$(fgp TWINE_USERNAME):$(fgp TWINE_PASSWORD)@repo.$(fgp LAN_ADDR)/artifactory/api/pypi/pypi-repo/simple" \
-        pip install -r tools/requirements.txt > /dev/null 2>&1
+        pip install -r tools/requirements.txt > /dev/null 2>&1 || return 1
 
     local SN_ENV="prod"
     local RITM_ARG
