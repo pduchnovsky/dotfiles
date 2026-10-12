@@ -6,6 +6,8 @@ if [[ "$(uname)" == Darwin ]]; then
     : fgp RESTIC_PASSWORD
     : fgp LAN_ADDR
     : fgp PATH_ADDR
+    : fgp PROXY_USER
+    : fgp PROXY_PASS
     : fgp PROXY_ADDR
     : fgp SN_PASS
     : fgp SN_PASS_FAT
@@ -26,11 +28,12 @@ if [[ "$(uname)" == Darwin ]]; then
 
     # SSH via PATH
     sshviapath() {
+        local user="${(L)USER}" host="$1"
         local lan_addr="$(fgp LAN_ADDR)" path_addr="$(fgp PATH_ADDR)"
-        ssh "$USER@$1@$2.$lan_addr@ssh.$path_addr"
+        ssh "$user@$user@$host.$lan_addr@ssh.$path_addr"
     }
-    alias ibis1='sshviapath '$USER' ibis1'
-    alias ibis2='sshviapath '$USER' ibis2'
+    alias ibis1='sshviapath ibis1'
+    alias ibis2='sshviapath ibis2'
 fi
 alias s='source ~/.zshrc'
 alias cd="z"
@@ -448,8 +451,10 @@ republish() {
 brew() {
     local brew_bin="$HOMEBREW_PREFIX/bin/brew"
     local PROXY_ADDR="$(fgp PROXY_ADDR)"
+	local PROXY_USER="$(fgp PROXY_USER)"
+	local PROXY_PASS="$(fgp PROXY_PASS)"
     if ping -c1 -W1 "$PROXY_ADDR" &>/dev/null; then
-        ALL_PROXY="socks5://$PROXY_ADDR:80" "$brew_bin" "$@"
+        ALL_PROXY="http://${PROXY_USER}:${PROXY_PASS}@$PROXY_ADDR:80" "$brew_bin" "$@"
     else
         "$brew_bin" "$@"
     fi
