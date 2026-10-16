@@ -332,6 +332,22 @@ dot() {
 tf() { terraform $@; }
 tfi() { tf init "$@"; }
 
+precommit() {
+    local proxy_addr proxy_user proxy_pass proxy
+    proxy_addr="$(fgp PROXY_ADDR)" || return 1
+
+    if ping -c1 -W1 "$proxy_addr" &>/dev/null; then
+        proxy_user="$(fgp PROXY_USER)" || return 1
+        proxy_pass="$(fgp PROXY_PASS)" || return 1
+        proxy="http://${proxy_user}:${proxy_pass}@${proxy_addr}:80"
+        HTTP_PROXY="$proxy" HTTPS_PROXY="$proxy" \
+        http_proxy="$proxy" https_proxy="$proxy" \
+            pre-commit "$@"
+    else
+        pre-commit "$@"
+    fi
+}
+
 pre() {
     local repo_root current_dir temp_base cloud_config cloud_link tf_file
     local has_cloud=0 init_upgrade=0
