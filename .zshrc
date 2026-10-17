@@ -178,3 +178,6 @@ fi
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+_tab_title() { print -n "\e]2;${${PWD:t}#terraform-}\a" }
+precmd_functions+=(_tab_title)
