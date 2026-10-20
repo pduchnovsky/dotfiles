@@ -179,5 +179,7 @@ fi
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-_tab_title() { print -n "\e]2;${${PWD:t}#terraform-}\a" }
+# Make tab names shorter in vscode for certain repos
+_tab_strip=(terraform- aws-factory-)
+_tab_title() { local d=${PWD:t} p; for p in $_tab_strip; do d=${d#$p}; done; print -n "\e]2;$d\a" }
 precmd_functions+=(_tab_title)

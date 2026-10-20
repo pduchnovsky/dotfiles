@@ -303,20 +303,113 @@ b() {
     gco $default_branch && sync
 }
 ba() {
-    original_dir=$(pwd)
-    for i in $(find ~/repos -name '.git' -type d); do
-        cd "$(dirname "$i")" || {
-            echo "[ERROR] $(dirname "$i"): Failed to cd" >&2
-            continue
-        }
+    _repos_parallel b
+}
+sync() {
+    case "$1" in
+    "")
+        git fetch --all --prune -a
+        (git pull --recurse-submodules 2>/dev/null) | grep "Updated branch"
+        git branch -vv | awk "/: gone]/ {print \$1}" | xargs -r git branch -D
+        ;;
+    *)
+        head_branch=$(git remote show $1 | grep "HEAD branch:" | awk '{print $3}')
+        git fetch --prune -a $1
+        git merge $1/$head_branch --no-commit --strategy-option theirs
+        git submodule update --recursive
+        ;;
+    esac
+}
+syncall() {
+    _repos_parallel _syncall_repo
+}
+_syncall_repo() {
+    local branches branch
+    command git fetch --all --prune || return $?
+    command git pull --recurse-submodules || return $?
+    branches="$(command git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads)" || return $?
+    while IFS= read -r branch; do
+        command git branch -D "$branch" || return $?
+    done < <(awk '$2 == "[gone]" {print $1}' <<<"$branches")
+}
+_repos_parallel() {
+    setopt local_options no_monitor no_notify
+    local operation="$1"
+    local git_dir repo repo_name output_file pid result line spinner_index=1 had_errors=0 changed
+    local batch_start batch_end repo_index running clear_index parallelism=10
+    local -a spinner=('|' '/' '-' '\') repo_dirs output_files pids batch_names
+    while IFS= read -r -d '' git_dir; do
+        repo_dirs+=("$(dirname "$git_dir")")
+    done < <(find "$HOME/repos" -name '.git' -type d -print0)
 
-        b || echo "[ERROR] $(dirname "$i"): b() failed"
+    for ((batch_start = 1; batch_start <= ${#repo_dirs}; batch_start += parallelism)); do
+        batch_end=$((batch_start + parallelism - 1))
+        (( batch_end > ${#repo_dirs} )) && batch_end=${#repo_dirs}
+        batch_names=()
 
-        cd "$original_dir" || {
-            echo "[ERROR] Failed to return to $original_dir" >&2
-            exit 1
-        }
+        for ((repo_index = batch_start; repo_index <= batch_end; repo_index++)); do
+            repo="${repo_dirs[$repo_index]}"
+            batch_names+=("$(basename "$repo")")
+            output_file="$(mktemp "${TMPDIR:-/tmp}/repos-sync.XXXXXX")" || return 1
+            output_files[$repo_index]="$output_file"
+            (builtin cd "$repo" && "$operation") >"$output_file" 2>&1 &
+            pids[$repo_index]="$!"
+        done
+
+        if [[ -t 1 ]]; then
+            printf 'Syncing:\n'
+            for repo_name in "${batch_names[@]}"; do
+                printf '  %s\n' "$repo_name"
+            done
+            while true; do
+                running=0
+                for ((repo_index = batch_start; repo_index <= batch_end; repo_index++)); do
+                    pid="${pids[$repo_index]}"
+                    if kill -0 "$pid" 2>/dev/null; then
+                        running=1
+                        break
+                    fi
+                done
+                (( running )) || break
+                printf '\r[%s] Syncing' "${spinner[$spinner_index]}"
+                spinner_index=$((spinner_index % ${#spinner} + 1))
+                sleep 0.1
+            done
+            printf '\r\033[K'
+            for ((clear_index = 0; clear_index <= ${#batch_names}; clear_index++)); do
+                printf '\033[1A\r\033[K'
+            done
+        fi
+
+        for ((repo_index = batch_start; repo_index <= batch_end; repo_index++)); do
+            repo="${repo_dirs[$repo_index]}"
+            repo_name="$(basename "$repo")"
+            output_file="${output_files[$repo_index]}"
+            pid="${pids[$repo_index]}"
+            wait "$pid"
+            result=$?
+            changed=0
+            while IFS= read -r line; do
+                case "$line" in
+                    ""|"Already on '"*"'"|"Your branch is up to date with '"*"'."|"Already up to date.") ;;
+                    *) changed=1 ;;
+                esac
+            done < "$output_file"
+
+            if (( changed || result != 0 )); then
+                if (( result != 0 )); then
+                    print -u2 -r -- "$repo_name: $operation failed (exit $result)"
+                    command cat "$output_file" >&2
+                    had_errors=1
+                else
+                    print -r -- "$repo_name: changed"
+                    command cat "$output_file"
+                fi
+            fi
+            command rm -f "$output_file"
+        done
     done
+    return "$had_errors"
 }
 dot() {
     url="https://github.com/pduchnovsky/dotfiles"
@@ -649,47 +742,6 @@ cg() {
             git --git-dir="$repo" --work-tree="$repo/.." branch -D $branch
         done
     done
-}
-sync() {
-    case "$1" in
-    "")
-        git fetch --all --prune -a
-        (git pull --recurse-submodules 2>/dev/null) | grep "Updated branch"
-        git branch -vv | awk "/: gone]/ {print \$1}" | xargs -r git branch -D
-        ;;
-    *)
-        head_branch=$(git remote show $1 | grep "HEAD branch:" | awk '{print $3}')
-        git fetch --prune -a $1
-        git merge $1/$head_branch --no-commit --strategy-option theirs
-        git submodule update --recursive
-        ;;
-    esac
-}
-syncall() {
-    find ~/repos -name '.git' -type d | xargs -n 1 -P 15 -S 1024 -I {} bash -c '
-        repo_path="$(dirname "{}")"
-
-        cd "$repo_path" || {
-            echo "[ERROR] $repo_path: Failed to cd" >&2
-            exit 1
-        }
-
-        # Run git fetch and suppress normal output
-        git fetch --all --prune > /dev/null 2>&1 || \
-            echo "[ERROR] $repo_path: fetch failed"
-
-        # Run git pull, suppress "Already up to date" and show only real errors
-        pull_output=$(git pull --recurse-submodules 2>&1)
-        if [ $? -ne 0 ]; then
-            echo "[ERROR] $repo_path: pull failed: $pull_output"
-        fi
-
-        # Delete gone branches if any
-        gone_branches=$(git branch -vv | awk "/: gone]/ {print \$1}")
-        if [ -n "$gone_branches" ]; then
-            echo "$gone_branches" | xargs -r git branch -D 2>&1
-        fi
-    '
 }
 rebase() { git fetch origin && git rebase origin/$1; }
 push() {
