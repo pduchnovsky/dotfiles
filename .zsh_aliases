@@ -300,12 +300,12 @@ tfelog() {
 }
 b() {
     default_branch=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
-    gco $default_branch && sync
+    gco $default_branch && snc
 }
 ba() {
     _repos_parallel b
 }
-sync() {
+snc() {
     case "$1" in
     "")
         git fetch --all --prune -a
@@ -320,7 +320,7 @@ sync() {
         ;;
     esac
 }
-syncall() {
+snca() {
     _repos_parallel _syncall_repo
 }
 _syncall_repo() {
@@ -425,30 +425,20 @@ dot() {
 tf() { terraform $@; }
 tfi() { tf init "$@"; }
 
-precommit() {
-    local proxy_addr proxy_user proxy_pass proxy
-    proxy_addr="$(fgp PROXY_ADDR)" || return 1
-
-    if ping -c1 -W1 "$proxy_addr" &>/dev/null; then
-        proxy_user="$(fgp PROXY_USER)" || return 1
-        proxy_pass="$(fgp PROXY_PASS)" || return 1
-        proxy="http://${proxy_user}:${proxy_pass}@${proxy_addr}:80"
-        HTTP_PROXY="$proxy" HTTPS_PROXY="$proxy" \
-        http_proxy="$proxy" https_proxy="$proxy" \
-            pre-commit "$@"
-    else
-        pre-commit "$@"
-    fi
-}
-
 pre() {
+    git add . || return $?
     local repo_root current_dir temp_base cloud_config cloud_link tf_file
     local has_cloud=0 init_upgrade=0
-    local CORP_DOMAIN_LONG="$(fgp CORP_DOMAIN_LONG)"
+    local CORP_DOMAIN_LONG
+    local proxy_addr proxy_user proxy_pass proxy
 
     if [[ "${1:-}" == upgrade ]]; then
         init_upgrade=1
         shift
+    fi
+    if [[ "${1:-}" == all ]]; then
+        shift
+        set -- --all-files "$@"
     fi
 
     current_dir="$PWD"
@@ -459,49 +449,48 @@ pre() {
     for tf_file in "$PWD"/*.tf(N); do
         if grep -Eq '^[[:space:]]*cloud[[:space:]]*\{' "$tf_file"; then
             has_cloud=1
+            break
         fi
     done
 
-    if (( has_cloud )); then
-        (
-            cd "$current_dir" || exit 1
-            if (( init_upgrade )); then
-                tf init -upgrade || exit $?
-            elif [[ ! -s .terraform/modules/modules.json ]]; then
-                tf init || exit $?
-            fi
-            cd "$repo_root" || exit 1
-            pre-commit run --all-files "$@"
-        )
-        return $?
-    fi
-
-    if [[ ! -f "$cloud_config" ]]; then
-        printf '%s\n' \
-            'terraform {' \
-            '  cloud {' \
-            '    organization = "iac-management"' \
-            '    hostname     = "terraform.fat.'"${CORP_DOMAIN_LONG}"'"' \
-            '    workspaces {' \
-            '      name = "tfe-2-modules"' \
-            '    }' \
-            '  }' \
-            '}' > "$cloud_config" || return 1
-    fi
-
-    cloud_link="${current_dir}/pre-cloud-${$}.tf"
-
     (
-        cd "$current_dir" || exit 1
-        ln -s "$cloud_config" "$cloud_link" || exit 1
-        trap 'command rm -f "$cloud_link"' EXIT
+        builtin cd "$current_dir" || exit 1
+        if (( ! has_cloud )); then
+            if [[ ! -f "$cloud_config" ]]; then
+                CORP_DOMAIN_LONG="$(fgp CORP_DOMAIN_LONG)" || exit 1
+                printf '%s\n' \
+                    'terraform {' \
+                    '  cloud {' \
+                    '    organization = "iac-management"' \
+                    '    hostname     = "terraform.fat.'"${CORP_DOMAIN_LONG}"'"' \
+                    '    workspaces {' \
+                    '      name = "tfe-2-modules"' \
+                    '    }' \
+                    '  }' \
+                    '}' > "$cloud_config" || exit 1
+            fi
+            cloud_link="${current_dir}/pre-cloud-${$}.tf"
+            ln -s "$cloud_config" "$cloud_link" || exit 1
+            trap 'command rm -f "$cloud_link"' EXIT
+        fi
+
         if (( init_upgrade )); then
             tf init -upgrade || exit $?
         elif [[ ! -s .terraform/modules/modules.json ]]; then
             tf init || exit $?
         fi
-        cd "$repo_root" || exit 1
-        pre-commit run --all-files "$@"
+        builtin cd "$repo_root" || exit 1
+        proxy_addr="$(fgp PROXY_ADDR)" || exit 1
+        if ping -c1 -W1 "$proxy_addr" &>/dev/null; then
+            proxy_user="$(fgp PROXY_USER)" || exit 1
+            proxy_pass="$(fgp PROXY_PASS)" || exit 1
+            proxy="http://${proxy_user}:${proxy_pass}@${proxy_addr}:80"
+            HTTP_PROXY="$proxy" HTTPS_PROXY="$proxy" \
+            http_proxy="$proxy" https_proxy="$proxy" \
+                pre-commit run "$@"
+        else
+            pre-commit run "$@"
+        fi
     )
 }
 
@@ -936,7 +925,7 @@ presentation() {
 alias 1='ssh server'
 alias 2='ssh server2'
 test() {
-    if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
+    if [[ "$PWD" == "$HOME/repos/.duch/duchnovsky.com" ]]; then
         if [[ "$(uname)" == "Darwin" ]]; then
             (sleep 1 && open -a "Vivaldi" https://localhost:3560) &
         elif grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
