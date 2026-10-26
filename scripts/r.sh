@@ -7,7 +7,7 @@
 
 # Optional parameters:
 # @raycast.icon 🤖
-# @raycast.packageName routes
+# @raycast.packageName r
 
 target_host="10.10.10.2"
 

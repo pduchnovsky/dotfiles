@@ -1,0 +1,4 @@
+root = true
+
+[.zsh_aliases]
+ignore = true

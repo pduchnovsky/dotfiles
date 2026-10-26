@@ -608,22 +608,87 @@ fr() {
     local only_uncloned=0 argument
     local -a project_args
     clonerepo() {
-        local opt project repo target_dir response selection selected_repo
-        local -a projects_array repositories selected_repos visible_repos
+        setopt local_options no_monitor no_notify
+
+        local opt project repo target_dir response selection selected_repo http_status
+        local temp_dir result_file result_line worker_pid project_repositories
+        local -i request_index=0
+        local -a projects_array repositories selected_repos visible_repos skipped_projects failed_projects worker_pids result_files
         opt=$([ "$1" = sol ] && echo ".solution_projects/" || echo "")
         repositories=()
+        skipped_projects=()
+        failed_projects=()
         read -a projects_array <<<"$PROJECTS" 2>/dev/null || read -A projects_array <<<"$PROJECTS"
-        for project in "${projects_array[@]}"; do
-            response="$(curl -fsS --retry 5 --retry-delay 1 --retry-connrefused \
+
+        fetch_project_repositories() {
+            local project="$1" response http_status project_repositories
+            response="$(curl -sS -w $'\n%{http_code}' --retry 5 --retry-delay 1 --retry-connrefused \
                 -u "${USER}:$BITBUCKET_TOKEN" \
-                "https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000")" || {
-                print -u2 "Failed to retrieve repositories for project $project"
-                continue
+                "https://$BITBUCKET_ADDRESS/rest/api/1.0/projects/$project/repos?limit=1000" 2>/dev/null)" || {
+                print -r -- "ERROR"$'\t'"$project (request failed)"
+                return 0
             }
-            while IFS= read -r repo; do
-                [[ -n "$repo" ]] && repositories+=("$repo")
-            done < <(jq -r '.values[]? | "\(.project.key)/\(.name)"' <<<"$response")
+            http_status="${response##*$'\n'}"
+            response="${response%$'\n'*}"
+            case "$http_status" in
+            200)
+                project_repositories="$(jq -r '.values[]? | "\(.project.key)/\(.name)"' <<<"$response")" || {
+                    print -r -- "ERROR"$'\t'"$project (invalid JSON response)"
+                    return 0
+                }
+                [[ -n "$project_repositories" ]] && print -r -- "$project_repositories"
+                ;;
+            401|403|404)
+                print -r -- "SKIP"$'\t'"$project (HTTP $http_status)"
+                ;;
+            *)
+                print -r -- "ERROR"$'\t'"$project (HTTP $http_status)"
+                ;;
+            esac
+        }
+
+        temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/fr-projects.XXXXXX")" || {
+            print -u2 "Could not create temporary directory for Bitbucket results"
+            return 1
+        }
+        for project in "${projects_array[@]}"; do
+            (( request_index += 1 ))
+            result_file="$temp_dir/$request_index"
+            result_files+=("$result_file")
+            fetch_project_repositories "$project" > "$result_file" &
+            worker_pids+=("$!")
+
+            if (( ${#worker_pids[@]} >= 6 )); then
+                for worker_pid in "${worker_pids[@]}"; do
+                    wait "$worker_pid" || true
+                done
+                worker_pids=()
+            fi
         done
+        for worker_pid in "${worker_pids[@]}"; do
+            wait "$worker_pid" || true
+        done
+
+        for result_file in "${result_files[@]}"; do
+            while IFS= read -r result_line; do
+                case "$result_line" in
+                SKIP$'\t'*) skipped_projects+=("${result_line#SKIP$'\t'}") ;;
+                ERROR$'\t'*) failed_projects+=("${result_line#ERROR$'\t'}") ;;
+                *) [[ -n "$result_line" ]] && repositories+=("$result_line") ;;
+                esac
+            done < "$result_file"
+            command rm -f "$result_file"
+        done
+        command rmdir "$temp_dir" 2>/dev/null
+
+        if (( ${#skipped_projects[@]} > 0 )); then
+            print -u2 "Skipped unavailable Bitbucket projects:"
+            printf '  %s\n' "${skipped_projects[@]}" >&2
+        fi
+        if (( ${#failed_projects[@]} > 0 )); then
+            print -u2 "Project repository discovery failures:"
+            printf '  %s\n' "${failed_projects[@]}" >&2
+        fi
         for selected_repo in "${repositories[@]}"; do
             project="${selected_repo%%/*}"
             repo="${selected_repo#*/}"
@@ -676,7 +741,7 @@ fr() {
 
     case "$1" in
     sol)
-        local factory cloud factory_dir
+        local factory cloud factory_dir cloud_filter="${2:-}"
         local -a factory_projects=(
             "GCP:terraform-gcp-factory-solution-project"
             "AWS:terraform-aws-factory-account-tailoring"
@@ -684,8 +749,15 @@ fr() {
         local -a organization_dirs=()
         local -a projects=()
 
+        cloud_filter="${(L)cloud_filter}"
+        if (( $# > 2 )) || [[ -n "$cloud_filter" && "$cloud_filter" != aws && "$cloud_filter" != gcp ]]; then
+            print -u2 "Usage: fr [-u|--uncloned] sol [aws|gcp]"
+            return 2
+        fi
+
         for factory in "${factory_projects[@]}"; do
             cloud="${factory%%:*}"
+            [[ -n "$cloud_filter" && "${(L)cloud}" != "$cloud_filter" ]] && continue
             SOL_FACTORY_PROJECT="${factory#*:}"
             factory_dir="$HOME/repos/HORIZON/$cloud/$SOL_FACTORY_PROJECT"
             if [[ ! -d "$factory_dir" ]]; then
@@ -696,11 +768,11 @@ fr() {
             while IFS= read -r project; do
                 [[ -n "$project" ]] && projects+=("$project")
             done < <(find "$factory_dir/organization" -type f -name '*.yaml' -print0 |
-                xargs -0 -n1 yq -r "if .vcs_project then .vcs_project elif \"$cloud\" == \"AWS\" then \"aws-\" + .solution_name + \"-\" + .use_case else \"\" end")
+                xargs -0 -P 6 -n1 yq -r "if .vcs_project then .vcs_project elif \"$cloud\" == \"AWS\" then \"aws-\" + .solution_name + \"-\" + .use_case else \"\" end")
         done
 
         PROJECTS=$(printf '%s\n' "${projects[@]}" |
-            tr '[:lower:]' '[:upper:]' | sort -u | grep -v '^NULL$' | xargs)
+            tr '[:lower:]' '[:upper:]' | sort -u | grep -Ev '^(NULL|HORIZON)$' | xargs)
         clonerepo sol
         ;;
     '')
@@ -925,7 +997,7 @@ presentation() {
 alias 1='ssh server'
 alias 2='ssh server2'
 test() {
-    if [[ "$PWD" == "$HOME/repos/.duch/duchnovsky.com" ]]; then
+    if [[ "$PWD" == "$HOME/repos/.pd/duchnovsky.com" ]]; then
         if [[ "$(uname)" == "Darwin" ]]; then
             (sleep 1 && open -a "Vivaldi" https://localhost:3560) &
         elif grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
