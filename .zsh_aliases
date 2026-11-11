@@ -428,7 +428,7 @@ tfi() { tf init "$@"; }
 pre() {
     git add . || return $?
     local repo_root current_dir temp_base cloud_config cloud_link tf_file
-    local has_cloud=0 init_upgrade=0
+    local has_tf=0 has_cloud=0 init_upgrade=0
     local CORP_DOMAIN_LONG
     local proxy_addr proxy_user proxy_pass proxy
 
@@ -447,6 +447,7 @@ pre() {
     cloud_config="${temp_base%/}/pre-commit-cloud.tf"
 
     for tf_file in "$PWD"/*.tf(N); do
+        has_tf=1
         if grep -Eq '^[[:space:]]*cloud[[:space:]]*\{' "$tf_file"; then
             has_cloud=1
             break
@@ -455,7 +456,8 @@ pre() {
 
     (
         builtin cd "$current_dir" || exit 1
-        if (( ! has_cloud )); then
+        if (( has_tf && ! has_cloud )); then
+            unset TF_WORKSPACE
             if [[ ! -f "$cloud_config" ]]; then
                 CORP_DOMAIN_LONG="$(fgp CORP_DOMAIN_LONG)" || exit 1
                 printf '%s\n' \
@@ -474,9 +476,9 @@ pre() {
             trap 'command rm -f "$cloud_link"' EXIT
         fi
 
-        if (( init_upgrade )); then
+        if (( has_tf && init_upgrade )); then
             tf init -upgrade || exit $?
-        elif [[ ! -s .terraform/modules/modules.json ]]; then
+        elif (( has_tf )) && [[ ! -s .terraform/modules/modules.json ]]; then
             tf init || exit $?
         fi
         builtin cd "$repo_root" || exit 1
@@ -806,23 +808,25 @@ cg() {
 }
 rebase() { git fetch origin && git rebase origin/$1; }
 push() {
-    if [[ $# -eq 0 ]]; then
-        read -p "Commit description: " desc
-    else
-        desc="$*"
-    fi
-    noverify=
-    if [[ "$desc" == -nv\ * ]]; then
-        noverify="--no-verify"
+    local desc="$*"
+    local -a noverify_args=() commit_args=()
+    if [[ "$desc" == "-nv" ]]; then
+        noverify_args=(--no-verify)
+        desc=""
+    elif [[ "$desc" == -nv\ * ]]; then
+        noverify_args=(--no-verify)
         desc="${desc#-nv }"
     elif [[ "$desc" == *\ -nv ]]; then
-        noverify="--no-verify"
+        noverify_args=(--no-verify)
         desc="${desc% -nv}"
     fi
-    if [ "$(pwd)" = "$HOME" ]; then
-        cfg commit -a --allow-empty-message $noverify -m "$desc" && cfg push $noverify
+    if [[ -n "${desc//[[:space:]]/}" ]]; then
+        commit_args=(-m "$desc")
+    fi
+    if [[ "$PWD" == "$HOME" ]]; then
+        cfg commit -a "${noverify_args[@]}" "${commit_args[@]}" && cfg push "${noverify_args[@]}"
     else
-        git add -A && git commit -a --allow-empty-message $noverify -m "$desc" && git push $noverify
+        git add -A && git commit -a "${noverify_args[@]}" "${commit_args[@]}" && git push "${noverify_args[@]}"
     fi
 }
 task() {
